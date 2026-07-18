@@ -9,4 +9,14 @@ export async function register() {
   // Dynamic import keeps pg out of any non-node bundle.
   const { migrateAtBoot } = await import("./lib/db/migrate");
   await migrateAtBoot();
+  // Library seeds are upserted at boot too (idempotent) — the standalone
+  // container has no npm scripts, so boot-time is the zero-ops place to do it.
+  const { seedLibrary } = await import("./lib/db/seed");
+  const { getPool } = await import("./lib/db/pool");
+  const { imported, core } = await seedLibrary(getPool());
+  console.log(
+    imported || core
+      ? `[carryover] library seeded: ${imported} imported, ${core} knee-core upserts`
+      : "[carryover] library seeds up to date",
+  );
 }

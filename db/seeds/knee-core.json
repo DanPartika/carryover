@@ -1,0 +1,224 @@
+{
+  "_comment": "Starter knee-rehab corridor — authored in-house (original instruction text; exercise mechanics are facts, phrasing is ours). Dan + his PT review, correct, and expand this toward the PRD's ~30-40 exercise corridor. No open dataset carries these (verified 2026-07-16).",
+  "exercises": [
+    {
+      "key": "quad-set",
+      "name": "Quad Set",
+      "position": "supine",
+      "difficulty": 1,
+      "body_regions": ["knee"],
+      "tags": ["knee-rehab", "post-op", "early-phase", "isometric", "quadriceps"],
+      "equipment": ["none", "towel"],
+      "instructions": [
+        "Sit or lie back with your surgical leg straight and the other knee comfortably bent.",
+        "Optionally place a small rolled towel under the knee of the straight leg.",
+        "Tighten the muscle on top of your thigh, pressing the back of the knee down toward the floor. The kneecap slides slightly upward when you do this correctly.",
+        "Hold the squeeze, then fully relax before the next repetition."
+      ]
+    },
+    {
+      "key": "ankle-pumps",
+      "name": "Ankle Pumps",
+      "position": "supine",
+      "difficulty": 1,
+      "body_regions": ["ankle_foot", "knee"],
+      "tags": ["knee-rehab", "post-op", "early-phase", "circulation"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie back with both legs straight and relaxed.",
+        "Slowly point your toes away from you as far as comfortable, then pull them back up toward your shin.",
+        "Keep the motion smooth and rhythmic; the goal is circulation, not effort."
+      ]
+    },
+    {
+      "key": "heel-slide",
+      "name": "Heel Slide",
+      "position": "supine",
+      "difficulty": 1,
+      "body_regions": ["knee"],
+      "tags": ["knee-rehab", "post-op", "early-phase", "range-of-motion"],
+      "equipment": ["none", "towel"],
+      "instructions": [
+        "Lie on your back with both legs straight.",
+        "Slide the heel of your surgical leg along the surface toward your buttock, letting the knee bend as far as comfortable.",
+        "Optionally loop a towel or strap around your foot to assist the slide.",
+        "Pause at the end of the comfortable range, then slide back to straight."
+      ]
+    },
+    {
+      "key": "seated-knee-flexion",
+      "name": "Seated Knee Flexion",
+      "position": "seated",
+      "difficulty": 2,
+      "body_regions": ["knee"],
+      "tags": ["knee-rehab", "range-of-motion", "active"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit on a firm chair with both feet flat on the floor.",
+        "Slide the foot of your surgical leg back under the chair as far as comfortable, letting the knee bend.",
+        "For a gentle overpressure, cross your other ankle in front and press lightly backward.",
+        "Hold at the end range, then slide the foot forward to relax."
+      ]
+    },
+    {
+      "key": "straight-leg-raise",
+      "name": "Straight-Leg Raise",
+      "position": "supine",
+      "difficulty": 2,
+      "body_regions": ["knee", "hip"],
+      "tags": ["knee-rehab", "post-op", "quadriceps", "strengthening"],
+      "equipment": ["none", "ankle-weights"],
+      "instructions": [
+        "Lie on your back with your surgical leg straight and the other knee bent, foot flat.",
+        "Tighten the thigh of the straight leg first (a quad set), locking the knee.",
+        "Keeping the knee locked, lift the whole leg until it is level with the opposite thigh.",
+        "Lower slowly with control, keeping the knee straight the entire time."
+      ]
+    },
+    {
+      "key": "glute-bridge",
+      "name": "Glute Bridge",
+      "position": "supine",
+      "difficulty": 2,
+      "body_regions": ["hip", "knee", "core"],
+      "tags": ["knee-rehab", "glutes", "strengthening", "posterior-chain"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with both knees bent and feet flat, hip-width apart.",
+        "Squeeze your buttocks and lift your hips until your body forms a straight line from shoulders to knees.",
+        "Avoid arching the lower back; the lift comes from the hips.",
+        "Lower slowly to the floor and relax between repetitions."
+      ]
+    },
+    {
+      "key": "single-leg-bridge",
+      "name": "Single-Leg Bridge",
+      "position": "supine",
+      "difficulty": 3,
+      "body_regions": ["hip", "knee", "core"],
+      "tags": ["knee-rehab", "glutes", "strengthening", "unilateral"],
+      "equipment": ["none"],
+      "instructions": [
+        "Set up as for a glute bridge, then extend one leg so only the working foot stays on the floor.",
+        "Squeeze the buttock of the working side and lift the hips, keeping the pelvis level.",
+        "If the pelvis drops or twists, regress to the two-leg bridge.",
+        "Lower with control and repeat before switching sides."
+      ]
+    },
+    {
+      "key": "clamshell",
+      "name": "Clamshell",
+      "position": "side_lying",
+      "difficulty": 2,
+      "body_regions": ["hip"],
+      "tags": ["knee-rehab", "glutes", "hip-stability"],
+      "equipment": ["none", "resistance-band"],
+      "instructions": [
+        "Lie on your side with hips and knees bent about 45 degrees, legs stacked.",
+        "Keeping your feet together and pelvis still, lift the top knee like a clamshell opening.",
+        "Do not let your pelvis roll backward — the motion is small and comes from the hip.",
+        "Lower slowly. Add a band just above the knees to progress."
+      ]
+    },
+    {
+      "key": "terminal-knee-extension",
+      "name": "Terminal Knee Extension (TKE)",
+      "position": "standing",
+      "difficulty": 2,
+      "body_regions": ["knee"],
+      "tags": ["knee-rehab", "quadriceps", "strengthening", "end-range"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Anchor a resistance band at knee height and loop it behind the knee of your working leg, facing the anchor.",
+        "Step back until the band is taut, with the working knee slightly bent.",
+        "Straighten the knee fully against the band, squeezing the thigh at the top.",
+        "Let the band bend the knee slightly, then extend again with control."
+      ]
+    },
+    {
+      "key": "heel-raise",
+      "name": "Heel Raise",
+      "position": "standing",
+      "difficulty": 2,
+      "body_regions": ["ankle_foot", "knee"],
+      "tags": ["knee-rehab", "calves", "strengthening"],
+      "equipment": ["none", "wall", "chair"],
+      "instructions": [
+        "Stand tall with fingertips on a wall or chair back for balance.",
+        "Rise up onto the balls of both feet as high as comfortable.",
+        "Pause at the top, then lower slowly with control.",
+        "Progress by shifting more weight to the surgical side."
+      ]
+    },
+    {
+      "key": "mini-squat",
+      "name": "Mini Squat",
+      "position": "standing",
+      "difficulty": 2,
+      "body_regions": ["knee", "hip"],
+      "tags": ["knee-rehab", "quadriceps", "strengthening", "functional"],
+      "equipment": ["none", "chair", "wall"],
+      "instructions": [
+        "Stand with feet hip-width apart, holding a counter or chair back if needed.",
+        "Bend both knees to lower a few inches — roughly a quarter of a full squat — keeping knees tracking over toes.",
+        "Keep your heels down and chest up.",
+        "Push through both feet to stand tall again."
+      ]
+    },
+    {
+      "key": "wall-sit",
+      "name": "Wall Sit",
+      "position": "standing",
+      "difficulty": 3,
+      "body_regions": ["knee", "hip"],
+      "tags": ["knee-rehab", "quadriceps", "isometric", "endurance"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand with your back flat against a wall, feet about a foot and a half from it, hip-width apart.",
+        "Slide down the wall until your knees are bent — start shallow (about 45 degrees) and deepen only as tolerated, never past thighs-parallel.",
+        "Keep knees over ankles, not past the toes, and your back pressed into the wall.",
+        "Hold, then slide back up. Stop if you feel kneecap pain."
+      ]
+    },
+    {
+      "key": "step-up",
+      "name": "Step-Up",
+      "position": "standing",
+      "difficulty": 3,
+      "body_regions": ["knee", "hip"],
+      "tags": ["knee-rehab", "functional", "strengthening", "unilateral"],
+      "equipment": ["step"],
+      "instructions": [
+        "Stand facing a low step, hands free or one hand on a rail.",
+        "Place the foot of your working leg fully on the step.",
+        "Push through that heel to lift your body up, bringing the other foot to the step.",
+        "Step back down slowly with control, leading with the non-working leg."
+      ]
+    },
+    {
+      "key": "step-down",
+      "name": "Step-Down",
+      "position": "standing",
+      "difficulty": 4,
+      "body_regions": ["knee", "hip"],
+      "tags": ["knee-rehab", "eccentric", "control", "advanced"],
+      "equipment": ["step"],
+      "instructions": [
+        "Stand on a low step on your working leg, the other foot hovering off the front edge.",
+        "Bend the working knee to slowly lower the free heel toward the floor — the knee stays tracking over the toes, pelvis level.",
+        "Touch the heel down lightly without transferring weight, then push back up.",
+        "This is an eccentric control drill: the way down is the exercise."
+      ]
+    }
+  ],
+  "progressions": [
+    { "from": "quad-set", "to": "straight-leg-raise", "note": "Add hip-flexor load once the quad fires reliably with no extension lag." },
+    { "from": "quad-set", "to": "terminal-knee-extension", "note": "Move the isometric squeeze into banded end-range work." },
+    { "from": "heel-slide", "to": "seated-knee-flexion", "note": "Progress from assisted to active flexion range as swelling settles." },
+    { "from": "glute-bridge", "to": "single-leg-bridge", "note": "Progress when the two-leg bridge is easy and the pelvis stays level." },
+    { "from": "terminal-knee-extension", "to": "mini-squat", "note": "Move to closed-chain loading once end-range extension is strong." },
+    { "from": "mini-squat", "to": "wall-sit", "note": "Add isometric endurance at a controlled depth." },
+    { "from": "mini-squat", "to": "step-up", "note": "Progress to single-leg functional loading." },
+    { "from": "step-up", "to": "step-down", "note": "Eccentric single-leg control — the hardest of the chain; watch knee tracking." }
+  ]
+}

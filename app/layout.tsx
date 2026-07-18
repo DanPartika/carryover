@@ -32,6 +32,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="brand-text">Carryover</span>
               </Link>
               <nav className="flex items-center gap-4">
+                <Link
+                  href="/library"
+                  className="text-sm font-semibold text-muted transition hover:text-ink"
+                >
+                  Library
+                </Link>
                 <AccountControl />
               </nav>
             </div>

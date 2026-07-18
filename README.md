@@ -22,10 +22,14 @@ npm run dev        # http://localhost:3004 — migrations apply at boot
 
 ## On the platform
 
-`scripts/lithe.sh` auto-discovers `docker-compose.yml`; register the app in
-Studio to mint the OIDC client id, then set `NEXT_PUBLIC_LITHE_*` and
-`NEXT_PUBLIC_BASE_PATH=/apps/carryover` in `.env` and rebuild. All AI calls go
-through the platform `/v1/ai` gateway — no direct-Anthropic path exists.
+`scripts/lithe.sh` auto-discovers `docker-compose.yml`. **Registered in Studio
+2026-07-17**: client_id `382261427726974978`, gateway `/apps/carryover →
+http://carryover:3004`, visibility `private` (flip to `group` when the pilot
+clinic group exists), dev redirect URI `http://localhost:3004/callback`. Set
+`NEXT_PUBLIC_LITHE_*` in `.env` (and `NEXT_PUBLIC_BASE_PATH=/apps/carryover`
+for gateway serving) and rebuild — NEXT_PUBLIC_* are inlined at build time.
+All AI calls go through the platform `/v1/ai` gateway — no direct-Anthropic
+path exists.
 
 ## Layout
 
