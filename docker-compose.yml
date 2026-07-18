@@ -1,0 +1,34 @@
+# Carryover — self-contained app compose (Lithe v0.5 contract).
+# Discovered by scripts/lithe.sh; also runs standalone from this folder.
+services:
+  carryover:                         # service name == slug == folder == basePath segment
+    build: .
+    env_file: .env
+    environment:
+      # ${VAR-default}: prod root .env sets these EMPTY; dev falls back to in-network defaults.
+      LITHE_ISSUER_INTERNAL_URL: ${LITHE_ISSUER_INTERNAL_URL-http://zitadel:8080}
+      LITHE_CORE_INTERNAL_URL: ${LITHE_CORE_INTERNAL_URL-http://core:8080}
+    ports:
+      - "127.0.0.1:3004:3004"        # loopback-bound: dev convenience without the prod-exposure sharp edge
+    restart: unless-stopped
+    depends_on:
+      carryover-db:
+        condition: service_healthy
+    # NO networks: block — lithe.sh merges everything onto lithe_default (platform ref §5)
+
+  carryover-db:                      # MUST NOT be named "db" — it would collide with the platform's
+                                     # `db` service in the merged compose project
+    image: postgres:16-alpine
+    env_file: .env                   # reads POSTGRES_* from the app .env (single source for the password)
+    volumes:
+      - carryover-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carryover -d carryover"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # No published port. psql access: docker compose exec carryover-db psql -U carryover
+
+volumes:
+  carryover-pgdata:

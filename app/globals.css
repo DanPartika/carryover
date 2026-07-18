@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Carryover theme — light, warm, clinical-but-friendly. Paper-warm surfaces,
+   recovery-green accents, clinic-blue as the "in office" partner color: the
+   brand gradient runs clinic-blue → home-green, i.e. carryover itself. */
+@theme {
+  --color-base: #f7f6f2; /* app background (warm paper) */
+  --color-card: #ffffff; /* cards / surfaces */
+  --color-raise: #eef1ec; /* raised surfaces, hover */
+  --color-edge: #e4e3db; /* borders */
+  --color-ink: #1c211e; /* primary text */
+  --color-muted: #68716b; /* secondary text */
+
+  --color-accent: #12a577; /* home/progress green — interactive highlights */
+  --color-accent-deep: #0c7f5b; /* CTAs */
+  --color-clinic: #4f7cf0; /* in-office blue — brand gradient partner */
+  --color-flag: #e2574c; /* pain flags / danger */
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.brand-text {
+  background-image: linear-gradient(120deg, var(--color-clinic), var(--color-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

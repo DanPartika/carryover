@@ -1,0 +1,21 @@
+# Env / secrets — commit .env.example only
+.env
+.env.*
+!.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Backups (nightly pg_dump rotation lives here on the prod box)
+backups/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+tsconfig.tsbuildinfo
+
+# Personal productivity system (tasks/memory) — not part of the product
+productivity/

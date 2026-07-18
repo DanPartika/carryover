@@ -1,0 +1,9 @@
+# Dev-only override: publishes the app DB on loopback so a host-run
+# `npm run dev` can reach it (CARRYOVER_DB_HOST=localhost, PORT=5434 —
+# clientfirst dev uses 5433). NEVER merged by lithe.sh — it only scans
+# docker-compose.yml. Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d carryover-db
+services:
+  carryover-db:
+    ports:
+      - "127.0.0.1:5434:5432"

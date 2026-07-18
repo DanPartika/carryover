@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0c7f5b"/>
+  <!-- carryover arc: clinic dot -> home arrow -->
+  <circle cx="16" cy="46" r="5" fill="#9be8cf"/>
+  <path d="M16 40c1-14 10-21 22-21h6" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M37 10l9 9-9 9" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
