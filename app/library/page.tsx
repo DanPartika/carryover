@@ -99,6 +99,7 @@ export default function LibraryPage() {
   const [equipment, setEquipment] = useState("");
   const [difficulty, setDifficulty] = useState("");
   const [kneeCoreOnly, setKneeCoreOnly] = useState(false);
+  const [includeGym, setIncludeGym] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -119,6 +120,7 @@ export default function LibraryPage() {
       if (equipment) params.set("equipment", equipment);
       if (difficulty) params.set("difficulty", difficulty);
       if (kneeCoreOnly) params.set("source", "carryover");
+      if (includeGym) params.set("tier", "all");
       try {
         const res = await apiFetch(`/api/exercises?${params}`);
         if (!res.ok) throw new Error(`exercises ${res.status}`);
@@ -132,7 +134,7 @@ export default function LibraryPage() {
         setBusy(false);
       }
     },
-    [q, region, equipment, difficulty, kneeCoreOnly],
+    [q, region, equipment, difficulty, kneeCoreOnly, includeGym],
   );
 
   useEffect(() => {
@@ -160,15 +162,29 @@ export default function LibraryPage() {
             {total} exercises{kneeCoreOnly ? " · knee-rehab core" : ""}
           </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
-          <input
-            type="checkbox"
-            checked={kneeCoreOnly}
-            onChange={(e) => setKneeCoreOnly(e.target.checked)}
-            className="h-4 w-4 accent-[var(--color-accent-deep)]"
-          />
-          Knee-rehab core only
-        </label>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={kneeCoreOnly}
+              onChange={(e) => setKneeCoreOnly(e.target.checked)}
+              className="h-4 w-4 accent-[var(--color-accent-deep)]"
+            />
+            Knee-rehab core only
+          </label>
+          <label
+            className="flex cursor-pointer items-center gap-2 text-sm text-muted"
+            title="Barbell, kettlebell, olympic, and strongman work — hidden from the clinical view by default"
+          >
+            <input
+              type="checkbox"
+              checked={includeGym}
+              onChange={(e) => setIncludeGym(e.target.checked)}
+              className="h-4 w-4 accent-[var(--color-accent-deep)]"
+            />
+            Include gym extras
+          </label>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

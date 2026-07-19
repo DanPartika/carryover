@@ -34,6 +34,9 @@ export async function GET(req: NextRequest) {
   const source = p.get("source");
   if (source) where.push(`e.source = ${arg(source)}`);
 
+  // Default view is the curated rehab tier; ?tier=all opts in to gym extras.
+  if (p.get("tier") !== "all") where.push(`e.tier = 'rehab'`);
+
   const difficulty = Number(p.get("difficulty"));
   if (difficulty >= 1 && difficulty <= 5) where.push(`e.difficulty <= ${arg(difficulty)}`);
 

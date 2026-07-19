@@ -71,6 +71,21 @@ const LEVEL_DIFFICULTY: Record<FedRecord["level"], number> = {
   expert: 4,
 };
 
+// Curation tier (must mirror db/migrations/0003_tiering.sql): the default
+// library view is rehab-plausible only; gym-flavored content imports behind
+// the "gym extras" toggle.
+const GYM_CATEGORIES = new Set(["powerlifting", "olympic weightlifting", "strongman"]);
+const GYM_EQUIPMENT = new Set(["barbell", "e-z curl bar", "kettlebells"]);
+
+function tierFor(r: FedRecord): "rehab" | "gym-extra" {
+  if (GYM_CATEGORIES.has(r.category)) return "gym-extra";
+  if (/smith/i.test(r.name)) return "gym-extra";
+  if (r.equipment && GYM_EQUIPMENT.has(r.equipment)) return "gym-extra";
+  if (r.category === "plyometrics" && r.equipment && r.equipment !== "body only")
+    return "gym-extra";
+  return "rehab";
+}
+
 function regionsFor(muscles: string[]): string[] {
   const out = new Set<string>();
   for (const m of muscles) for (const r of MUSCLE_REGION[m] ?? []) out.add(r);
@@ -120,8 +135,8 @@ async function seedFreeExerciseDb(pool: Pool, bySlug: Map<string, string>): Prom
     } = await pool.query<{ id: string }>(
       `INSERT INTO exercises
          (source, source_key, name, instructions, body_regions, difficulty, tags,
-          images, license, license_author, source_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          images, license, license_author, source_url, tier)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (source, source_key) DO NOTHING
        RETURNING id`,
       [
@@ -136,6 +151,7 @@ async function seedFreeExerciseDb(pool: Pool, bySlug: Map<string, string>): Prom
         FED_LICENSE,
         "yuhonas/free-exercise-db contributors",
         FED_REPO,
+        tierFor(r),
       ],
     );
     if (!row) continue;
