@@ -38,6 +38,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 >
                   Library
                 </Link>
+                <Link
+                  href="/people"
+                  className="text-sm font-semibold text-muted transition hover:text-ink"
+                >
+                  People
+                </Link>
                 <AccountControl />
               </nav>
             </div>

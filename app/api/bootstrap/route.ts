@@ -93,6 +93,21 @@ export async function POST(req: NextRequest) {
     [identity.litheUserId, identity.email, identity.displayName],
   );
 
+  // App-admin grant: emails listed in CARRYOVER_ADMIN_EMAILS get is_app_admin
+  // on login (idempotent). The standalone dev user is always admin — dev only,
+  // that branch is dead once an issuer is configured.
+  if (!user.is_app_admin) {
+    const adminEmails = (process.env.CARRYOVER_ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const email = (user.email ?? "").toLowerCase();
+    if (identity.litheUserId === "dev-user" || (email && adminEmails.includes(email))) {
+      await pool.query("UPDATE users SET is_app_admin = true WHERE id = $1", [user.id]);
+      user.is_app_admin = true;
+    }
+  }
+
   const { rows: memberships } = await pool.query<Membership>(
     `SELECT c.id AS "clinicId", c.name AS "clinicName", m.role
      FROM clinic_members m
