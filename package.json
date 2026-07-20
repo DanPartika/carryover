@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "jose": "^6.2.3",
     "next": "16.2.9",
     "oidc-client-ts": "^3.5.0",

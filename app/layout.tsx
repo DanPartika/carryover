@@ -33,6 +33,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </Link>
               <nav className="flex items-center gap-4">
                 <Link
+                  href="/patients"
+                  className="text-sm font-semibold text-muted transition hover:text-ink"
+                >
+                  Patients
+                </Link>
+                <Link
                   href="/library"
                   className="text-sm font-semibold text-muted transition hover:text-ink"
                 >

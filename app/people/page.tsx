@@ -75,6 +75,9 @@ export default function PeoplePage() {
   }, [loadPeople]);
 
   useEffect(() => {
+    // All setState inside bootstrap() happens after awaits (async), not in the
+    // effect body — the compiler lint can't see through the useCallback.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (authReady) void bootstrap();
   }, [authReady, bootstrap]);
 
