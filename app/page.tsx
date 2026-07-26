@@ -1,12 +1,14 @@
 "use client";
 
-// Walking-skeleton landing page: proves the whole stack (DB migrated at boot,
-// bootstrap round-trip, auth seam) before any feature code. Replaced by the
-// real role-based home (PT dashboard / patient Today view) in build steps 3-4.
+// Role-based home: patients land on their Today view (build step 4); PTs and
+// admins without a patient role see the stack-check + a pointer to /patients,
+// their real home surface (reachable from the nav either way).
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
+import PatientToday from "@/components/PatientToday";
 
 type Membership = { clinicId: string; clinicName: string; role: string };
 type Bootstrap = {
@@ -41,6 +43,10 @@ export default function Home() {
     };
   }, [enabled, loading, session]);
 
+  if (boot?.memberships.some((m) => m.role === "patient")) {
+    return <PatientToday />;
+  }
+
   return (
     <div className="space-y-6">
       <section>
@@ -48,8 +54,15 @@ export default function Home() {
           <span className="brand-text">Carryover</span>
         </h1>
         <p className="mt-2 max-w-xl text-muted">
-          Your PT&apos;s plan, always with you. This is the walking skeleton —
-          the stack is live end-to-end; the product lands on top of it.
+          Your PT&apos;s plan, always with you.{" "}
+          {boot?.memberships.length ? (
+            <>
+              Head to <Link href="/patients" className="underline">Patients</Link> to draft and
+              approve plans.
+            </>
+          ) : (
+            "This is the walking skeleton — the stack is live end-to-end; the product lands on top of it."
+          )}
         </p>
       </section>
 
@@ -111,23 +124,6 @@ export default function Home() {
         )}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-edge bg-card p-5">
-          <div className="text-sm font-semibold" style={{ color: "var(--color-clinic)" }}>
-            In office
-          </div>
-          <p className="mt-1 text-sm text-muted">
-            Visits, tap-done exercises, and quick-add land in build step 6.
-          </p>
-        </div>
-        <div className="rounded-xl border border-edge bg-card p-5">
-          <div className="text-sm font-semibold text-accent-deep">At home</div>
-          <p className="mt-1 text-sm text-muted">
-            The Today view, adherence logging, and your equipment shelf land in
-            build step 4.
-          </p>
-        </div>
-      </section>
     </div>
   );
 }
