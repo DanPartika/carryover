@@ -7,6 +7,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
+import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
 
 const REGION_OPTIONS = [
@@ -690,6 +691,17 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
           <p className="mt-2 text-sm text-muted">Complete an intake first, then draft a plan.</p>
         )}
       </section>
+
+      {/* Adherence dashboard. Keyed on the active plan so approving one
+          remounts the panel — its window is measured from the approval date. */}
+      {data.episode && (
+        <AdherencePanel
+          key={activePlan?.id ?? "no-plan"}
+          patientId={patientId}
+          clinicId={clinicId}
+          patientName={name}
+        />
+      )}
     </div>
   );
 }

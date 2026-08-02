@@ -17,7 +17,21 @@ type Row = {
   episodeId: string | null;
   condition: string | null;
   planStatus: "draft" | "active" | null;
+  flagCount: number;
+  lastLoggedOn: string | null;
 };
+
+const QUIET_AFTER_DAYS = 4;
+
+/** Days a patient with an active plan has gone without logging, or null when
+ *  they're current (or have no plan to be behind on). Silence is the signal a
+ *  PT most often misses between visits — it earns a chip of its own. */
+function quietDays(row: Row, today: string | null): number | null {
+  if (!today || row.planStatus !== "active") return null;
+  if (!row.lastLoggedOn) return null; // "never logged" is its own chip below
+  const n = Math.round((Date.parse(today) - Date.parse(row.lastLoggedOn)) / 86_400_000);
+  return n >= QUIET_AFTER_DAYS ? n : null;
+}
 
 function StatusChip({ row }: { row: Row }) {
   if (row.planStatus === "active")
@@ -41,9 +55,35 @@ function StatusChip({ row }: { row: Row }) {
   );
 }
 
+/** Attention chips: what the PT should look at before opening the patient. */
+function AttentionChips({ row, today }: { row: Row; today: string | null }) {
+  const quiet = quietDays(row, today);
+  const neverLogged = row.planStatus === "active" && !row.lastLoggedOn;
+  return (
+    <>
+      {row.flagCount > 0 && (
+        <span className="rounded-full bg-flag px-2.5 py-0.5 text-xs font-medium text-white">
+          ⚑ {row.flagCount}
+        </span>
+      )}
+      {neverLogged && (
+        <span className="rounded-full border border-flag/40 px-2.5 py-0.5 text-xs text-flag">
+          never logged
+        </span>
+      )}
+      {quiet !== null && (
+        <span className="rounded-full border border-edge px-2.5 py-0.5 text-xs text-muted">
+          quiet {quiet}d
+        </span>
+      )}
+    </>
+  );
+}
+
 export default function PatientsPage() {
   const { enabled, loading, session } = useAuth();
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [today, setToday] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const authReady = !loading && (!enabled || !!session);
 
@@ -52,8 +92,9 @@ export default function PatientsPage() {
     apiFetch("/api/patients")
       .then(async (res) => {
         if (!res.ok) throw new Error(`patients ${res.status}`);
-        const data = (await res.json()) as { patients: Row[] };
+        const data = (await res.json()) as { patients: Row[]; today: string };
         setRows(data.patients);
+        setToday(data.today);
       })
       .catch((e) => setError((e as Error).message));
   }, [authReady]);
@@ -89,7 +130,10 @@ export default function PatientsPage() {
                   <span className="ml-2 text-xs text-muted">{r.condition}</span>
                 )}
               </span>
-              <StatusChip row={r} />
+              <span className="flex flex-wrap items-center gap-1.5">
+                <AttentionChips row={r} today={today} />
+                <StatusChip row={r} />
+              </span>
             </Link>
           </li>
         ))}

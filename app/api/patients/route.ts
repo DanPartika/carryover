@@ -27,7 +27,20 @@ export async function GET(req: NextRequest) {
             ep.id AS "episodeId", ep.condition,
             (SELECT p.status FROM plans p
              WHERE p.episode_id = ep.id AND p.status IN ('draft','active')
-             ORDER BY p.status = 'active' DESC, p.created_at DESC LIMIT 1) AS "planStatus"
+             ORDER BY p.status = 'active' DESC, p.created_at DESC LIMIT 1) AS "planStatus",
+            -- Between-visit triage (PRD build step 5): who raised a hand, and
+            -- who has gone quiet. Flags age out after two weeks, which is also
+            -- the app's only "resolve" — there is no acknowledge action yet.
+            (SELECT count(*)::int FROM adherence_logs al
+             JOIN plan_items pi ON pi.id = al.plan_item_id
+             JOIN plans p ON p.id = pi.plan_id
+             WHERE p.episode_id = ep.id AND p.status = 'active'
+               AND al.flag_for_pt AND al.log_date > CURRENT_DATE - 14) AS "flagCount",
+            (SELECT max(al.log_date)::text FROM adherence_logs al
+             JOIN plan_items pi ON pi.id = al.plan_item_id
+             JOIN plans p ON p.id = pi.plan_id
+             WHERE p.episode_id = ep.id AND p.status = 'active'
+               AND al.completed) AS "lastLoggedOn"
      FROM reachable r
      JOIN users u ON u.id = r.patient_user_id
      JOIN clinics c ON c.id = r.clinic_id
@@ -37,5 +50,11 @@ export async function GET(req: NextRequest) {
     [user.id],
   );
 
-  return NextResponse.json({ patients: rows });
+  // The list's "quiet for N days" is measured against the database's today,
+  // the same clock adherence_logs.log_date is written with.
+  const {
+    rows: [{ today }],
+  } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+
+  return NextResponse.json({ patients: rows, today });
 }
