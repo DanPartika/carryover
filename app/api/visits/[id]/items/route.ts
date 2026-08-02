@@ -13,6 +13,8 @@ type Body = {
   sets?: number | null;
   reps?: number | null;
   holdSecs?: number | null;
+  durationMins?: number | null;
+  intensity?: string | null;
   pain?: number | null;
   note?: string | null;
 };
@@ -56,13 +58,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     rows: [item],
   } = await pool.query(
     `INSERT INTO visit_items
-       (visit_id, exercise_id, plan_item_id, sets, reps, hold_secs, pain, note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       (visit_id, exercise_id, plan_item_id, sets, reps, hold_secs,
+        duration_mins, intensity, pain, note)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (visit_id, exercise_id) DO UPDATE SET
        plan_item_id = EXCLUDED.plan_item_id, sets = EXCLUDED.sets, reps = EXCLUDED.reps,
-       hold_secs = EXCLUDED.hold_secs, pain = EXCLUDED.pain, note = EXCLUDED.note
+       hold_secs = EXCLUDED.hold_secs, duration_mins = EXCLUDED.duration_mins,
+       intensity = EXCLUDED.intensity, pain = EXCLUDED.pain, note = EXCLUDED.note
      RETURNING id, exercise_id AS "exerciseId", plan_item_id AS "planItemId",
-               sets, reps, hold_secs AS "holdSecs", pain, note`,
+               sets, reps, hold_secs AS "holdSecs",
+               duration_mins AS "durationMins", intensity, pain, note`,
     [
       id,
       body.exerciseId,
@@ -70,6 +75,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       clampOrNull(body.sets, 0, 20),
       clampOrNull(body.reps, 0, 100),
       clampOrNull(body.holdSecs, 1, 300),
+      clampOrNull(body.durationMins, 1, 240),
+      body.intensity?.trim().slice(0, 80) || null,
       clampOrNull(body.pain, 0, 10),
       body.note?.trim().slice(0, 500) || null,
     ],

@@ -21,6 +21,14 @@ import type { FlagEntry } from "@/lib/ai/summary";
 export const DEFAULT_WINDOW_DAYS = 28;
 const MAX_FLAG_ROWS = 20;
 
+export type AdhocEntry = {
+  date: string;
+  name: string;
+  durationMins: number | null;
+  pain: number | null;
+  note: string | null;
+};
+
 export type AdherenceView = {
   today: string;
   plan: { id: string; approvedOn: string } | null;
@@ -30,6 +38,8 @@ export type AdherenceView = {
   compliance: Compliance;
   pain: PainTrend;
   flags: FlagEntry[];
+  /** Care the patient did unprompted — never part of the compliance score. */
+  adhoc: AdhocEntry[];
   /** In-office sessions in the same window — the other half of the split the
    *  home-only compliance number deliberately leaves out. */
   visits: { count: number; lastOn: string | null };
@@ -56,6 +66,14 @@ export async function loadAdherence(
   } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
 
   const {
+    rows: [ep],
+  } = await pool.query<{ patientUserId: string }>(
+    `SELECT patient_user_id AS "patientUserId" FROM episodes WHERE id = $1`,
+    [episodeId],
+  );
+  const patientUserId = ep?.patientUserId;
+
+  const {
     rows: [plan],
   } = await pool.query<{ id: string; approvedOn: string }>(
     `SELECT id, approved_at::date::text AS "approvedOn"
@@ -71,10 +89,11 @@ export async function loadAdherence(
     compliance: { scorable: false, expected: 0, completed: 0, percent: null, items: [] },
     pain: { points: [], start: null, end: null, direction: null },
     flags: [],
+    adhoc: [],
     visits: { count: 0, lastOn: null },
     logsThrough: null,
   };
-  if (!plan) return empty;
+  if (!plan || !patientUserId) return empty;
 
   const windowDays = effectiveWindowDays(requestedDays, plan.approvedOn, today);
   const windowFrom = windowStart(windowDays, today);
@@ -86,26 +105,41 @@ export async function loadAdherence(
     [plan.id],
   );
 
+  // Patient-scoped, not plan-scoped. Ad-hoc care has no plan item to join
+  // through, and its pain score is still this patient's pain — it belongs in
+  // the trend. computeCompliance keys off planItemId, so these rows match no
+  // prescribed item and cannot inflate the percentage.
   const { rows: logs } = await pool.query<StatLog>(
     `SELECT al.plan_item_id AS "planItemId", al.log_date::text AS "logDate",
             al.completed, al.pain
      FROM adherence_logs al
-     JOIN plan_items pi ON pi.id = al.plan_item_id
-     WHERE pi.plan_id = $1 AND al.log_date BETWEEN $2::date AND $3::date`,
-    [plan.id, windowFrom, today],
+     WHERE al.patient_user_id = $1 AND al.log_date BETWEEN $2::date AND $3::date`,
+    [patientUserId, windowFrom, today],
+  );
+
+  // What the patient reached for unprompted, most recent first. Reading this
+  // next to the compliance bar is the point: "skipped the strengthening but
+  // iced four times" is a different clinical story from "did nothing".
+  const { rows: adhoc } = await pool.query<AdhocEntry>(
+    `SELECT al.log_date::text AS date, e.name, al.duration_done_mins AS "durationMins",
+            al.pain, al.note
+     FROM adherence_logs al JOIN exercises e ON e.id = al.exercise_id
+     WHERE al.patient_user_id = $1 AND al.plan_item_id IS NULL
+       AND al.log_date BETWEEN $2::date AND $3::date
+     ORDER BY al.log_date DESC, e.name
+     LIMIT ${MAX_FLAG_ROWS}`,
+    [patientUserId, windowFrom, today],
   );
 
   const { rows: flagRows } = await pool.query<FlagEntry>(
     `SELECT al.log_date::text AS date, e.name AS exercise, al.pain,
             al.note, al.flag_for_pt AS flagged
-     FROM adherence_logs al
-     JOIN plan_items pi ON pi.id = al.plan_item_id
-     JOIN exercises e ON e.id = pi.exercise_id
-     WHERE pi.plan_id = $1 AND al.log_date BETWEEN $2::date AND $3::date
+     FROM adherence_logs al JOIN exercises e ON e.id = al.exercise_id
+     WHERE al.patient_user_id = $1 AND al.log_date BETWEEN $2::date AND $3::date
        AND (al.flag_for_pt OR al.note IS NOT NULL)
      ORDER BY al.flag_for_pt DESC, al.log_date DESC
      LIMIT ${MAX_FLAG_ROWS}`,
-    [plan.id, windowFrom, today],
+    [patientUserId, windowFrom, today],
   );
 
   const {
@@ -124,9 +158,8 @@ export async function loadAdherence(
     rows: [{ logsThrough }],
   } = await pool.query<{ logsThrough: string | null }>(
     `SELECT max(al.updated_at)::text AS "logsThrough"
-     FROM adherence_logs al JOIN plan_items pi ON pi.id = al.plan_item_id
-     WHERE pi.plan_id = $1`,
-    [plan.id],
+     FROM adherence_logs al WHERE al.patient_user_id = $1`,
+    [patientUserId],
   );
 
   return {
@@ -137,6 +170,7 @@ export async function loadAdherence(
     compliance: computeCompliance(items, logs, windowDays),
     pain: computePainTrend(logs),
     flags: flagRows,
+    adhoc,
     visits: visitStats,
     logsThrough,
   };

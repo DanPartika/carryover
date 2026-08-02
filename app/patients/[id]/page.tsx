@@ -11,6 +11,7 @@ import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
 import NotesPanel from "@/components/NotesPanel";
 import VisitMode from "@/components/VisitMode";
+import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
 const REGION_OPTIONS = [
   ["knee", "Knee"],
@@ -42,9 +43,13 @@ type Item = {
   exerciseId: string;
   name: string;
   image: string | null;
+  dosageType: DosageType;
+  kind: "exercise" | "modality";
   sets: number | null;
   reps: number | null;
   holdSecs: number | null;
+  durationMins: number | null;
+  intensity: string | null;
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
   rationale: string | null;
@@ -68,7 +73,13 @@ type Overview = {
   plans: Plan[];
 };
 
-type SearchHit = { id: string; name: string; difficulty: number | null };
+type SearchHit = {
+  id: string;
+  name: string;
+  difficulty: number | null;
+  dosageType: DosageType;
+  kind: "exercise" | "modality";
+};
 
 export default function PatientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: patientId } = use(params);
@@ -221,6 +232,8 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
             sets: i.sets,
             reps: i.reps,
             holdSecs: i.holdSecs,
+            durationMins: i.durationMins,
+            intensity: i.intensity,
             frequencyPerWeek: i.frequencyPerWeek,
             location: i.location,
             rationale: i.rationale,
@@ -535,40 +548,77 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                       </button>
                     </div>
                   </div>
+                  {/* Only the fields this item's dosage type actually means.
+                      A bike showing sets/reps invites a nonsense prescription,
+                      and the patient's logger renders from the same type. */}
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
-                    <label className="flex items-center gap-1">
-                      sets
-                      <input
-                        type="number" min={1} max={10}
-                        value={it.sets ?? ""}
-                        onChange={(e) =>
-                          updateItem(idx, { sets: boundedOrNull(e.target.value, 1, 10) })
-                        }
-                        className={numInput}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1">
-                      reps
-                      <input
-                        type="number" min={1} max={50}
-                        value={it.reps ?? ""}
-                        onChange={(e) =>
-                          updateItem(idx, { reps: boundedOrNull(e.target.value, 1, 50) })
-                        }
-                        className={numInput}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1">
-                      hold s
-                      <input
-                        type="number" min={1} max={300}
-                        value={it.holdSecs ?? ""}
-                        onChange={(e) =>
-                          updateItem(idx, { holdSecs: boundedOrNull(e.target.value, 1, 300) })
-                        }
-                        className={numInput}
-                      />
-                    </label>
+                    {dosageTypeOf(it) === "time" ? (
+                      <>
+                        <label className="flex items-center gap-1">
+                          minutes
+                          <input
+                            type="number" min={1} max={240}
+                            value={it.durationMins ?? ""}
+                            onChange={(e) =>
+                              updateItem(idx, {
+                                durationMins: boundedOrNull(e.target.value, 1, 240),
+                              })
+                            }
+                            className={numInput}
+                          />
+                        </label>
+                        <label className="flex items-center gap-1">
+                          intensity
+                          <input
+                            value={it.intensity ?? ""}
+                            onChange={(e) => updateItem(idx, { intensity: e.target.value })}
+                            placeholder="level 2"
+                            className="w-24 rounded-md border border-edge bg-card px-1.5 py-1 text-center text-sm outline-none focus:border-accent"
+                          />
+                        </label>
+                      </>
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-1">
+                          sets
+                          <input
+                            type="number" min={1} max={10}
+                            value={it.sets ?? ""}
+                            onChange={(e) =>
+                              updateItem(idx, { sets: boundedOrNull(e.target.value, 1, 10) })
+                            }
+                            className={numInput}
+                          />
+                        </label>
+                        {dosageTypeOf(it) === "hold" ? (
+                          <label className="flex items-center gap-1">
+                            hold s
+                            <input
+                              type="number" min={1} max={300}
+                              value={it.holdSecs ?? ""}
+                              onChange={(e) =>
+                                updateItem(idx, {
+                                  holdSecs: boundedOrNull(e.target.value, 1, 300),
+                                })
+                              }
+                              className={numInput}
+                            />
+                          </label>
+                        ) : (
+                          <label className="flex items-center gap-1">
+                            reps
+                            <input
+                              type="number" min={1} max={50}
+                              value={it.reps ?? ""}
+                              onChange={(e) =>
+                                updateItem(idx, { reps: boundedOrNull(e.target.value, 1, 50) })
+                              }
+                              className={numInput}
+                            />
+                          </label>
+                        )}
+                      </>
+                    )}
                     <label className="flex items-center gap-1">
                       ×/week
                       <input
@@ -608,13 +658,19 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                         onClick={() => {
                           setDraftItems((prev) => [
                             ...(prev ?? []),
+                            // Seed the dosage the added item's type expects,
+                            // so the editor opens on the right fields.
                             {
                               exerciseId: h.id,
                               name: h.name,
                               image: null,
-                              sets: 3,
-                              reps: 10,
-                              holdSecs: null,
+                              dosageType: h.dosageType,
+                              kind: h.kind,
+                              sets: h.dosageType === "time" ? null : 3,
+                              reps: h.dosageType === "reps" ? 10 : null,
+                              holdSecs: h.dosageType === "hold" ? 20 : null,
+                              durationMins: h.dosageType === "time" ? 10 : null,
+                              intensity: null,
                               frequencyPerWeek: 5,
                               location: "home",
                               rationale: "",
@@ -677,12 +733,16 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                   key={it.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raise/60 px-3 py-2 text-sm"
                 >
-                  <span className="font-medium">{it.name}</span>
+                  <span className="font-medium">
+                    {it.name}
+                    {it.kind === "modality" && (
+                      <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                        care
+                      </span>
+                    )}
+                  </span>
                   <span className="text-xs text-muted">
-                    {it.sets ? `${it.sets}×` : ""}
-                    {it.reps ?? ""}
-                    {it.holdSecs ? `${it.sets ? " · " : ""}${it.holdSecs}s hold` : ""} ·{" "}
-                    {it.frequencyPerWeek}/wk · {it.location}
+                    {dosageText(it)} · {it.frequencyPerWeek}/wk · {it.location}
                   </span>
                 </li>
               ))}

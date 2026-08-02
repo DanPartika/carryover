@@ -65,7 +65,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const { rows: itemRows } = await pool.query(
       `SELECT pi.id, pi.plan_id AS "planId", pi.exercise_id AS "exerciseId",
               e.name, (e.images ->> 0) AS image, e.difficulty,
+              e.dosage_type AS "dosageType", e.kind,
               pi.sets, pi.reps, pi.hold_secs AS "holdSecs",
+              pi.duration_mins AS "durationMins", pi.intensity,
               pi.frequency_per_week AS "frequencyPerWeek", pi.location,
               pi.rationale, pi.sort
        FROM plan_items pi JOIN exercises e ON e.id = pi.exercise_id

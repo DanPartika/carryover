@@ -14,6 +14,8 @@ type ItemInput = {
   sets?: number | null;
   reps?: number | null;
   holdSecs?: number | null;
+  durationMins?: number | null;
+  intensity?: string | null;
   frequencyPerWeek?: number;
   location?: "office" | "home" | "both";
   rationale?: string;
@@ -86,14 +88,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (!validIds.has(exerciseId)) continue;
       await client.query(
         `INSERT INTO plan_items
-           (plan_id, exercise_id, sets, reps, hold_secs, frequency_per_week, location, rationale, sort)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+           (plan_id, exercise_id, sets, reps, hold_secs, duration_mins, intensity,
+            frequency_per_week, location, rationale, sort)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           plan.id,
           exerciseId,
           clampOrNull(it.sets, 1, 10),
           clampOrNull(it.reps, 1, 50),
           clampOrNull(it.holdSecs, 1, 300),
+          clampOrNull(it.durationMins, 1, 240),
+          it.intensity?.trim().slice(0, 80) || null,
           clampOrNull(it.frequencyPerWeek, 1, 14) ?? 5,
           ["office", "home", "both"].includes(String(it.location)) ? it.location : "home",
           String(it.rationale ?? "").slice(0, 500) || null,

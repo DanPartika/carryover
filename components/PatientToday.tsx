@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
+import { dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
 type Item = {
   id: string;
@@ -16,9 +17,13 @@ type Item = {
   instructions: string[];
   image: string | null;
   difficulty: number | null;
+  dosageType: DosageType;
+  kind: "exercise" | "modality";
   sets: number | null;
   reps: number | null;
   holdSecs: number | null;
+  durationMins: number | null;
+  intensity: string | null;
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
   rationale: string | null;
@@ -26,10 +31,22 @@ type Item = {
   logCompleted: boolean | null;
   logSetsDone: number | null;
   logRepsDone: number | null;
+  logDurationDoneMins: number | null;
   logPain: number | null;
   logEffort: number | null;
   logNote: string | null;
   logFlagForPt: boolean | null;
+};
+
+type CareOption = { id: string; name: string };
+
+type AdhocLog = {
+  id: string;
+  exerciseId: string;
+  name: string;
+  durationDoneMins: number | null;
+  pain: number | null;
+  note: string | null;
 };
 
 type Equipment = { id: string; slug: string; name: string; kind: string; owned: boolean };
@@ -37,9 +54,12 @@ type StreakDay = { date: string; completed: boolean };
 
 type VisitItem = {
   name: string;
+  dosageType: DosageType;
   sets: number | null;
   reps: number | null;
   holdSecs: number | null;
+  durationMins: number | null;
+  intensity: string | null;
   pain: number | null;
   note: string | null;
   adHoc: boolean;
@@ -70,15 +90,145 @@ type PlanData = {
   plan: { id: string; approvedAt: string } | null;
   items: Item[];
   streak: StreakDay[];
+  adhocToday: AdhocLog[];
+  careOptions: CareOption[];
   equipment: Equipment[];
 };
 
-function dosageLine(it: Item): string {
-  const parts: string[] = [];
-  if (it.sets) parts.push(`${it.sets}×${it.reps ?? ""}`.replace(/×$/, ` sets`));
-  if (it.holdSecs) parts.push(`${it.holdSecs}s hold`);
-  parts.push(`${it.frequencyPerWeek}/wk`);
-  return parts.join(" · ");
+/** Care nobody prescribed: iced because it felt tight, put the boots on,
+ *  reached for the heat pad. It reaches the PT and its pain score joins the
+ *  trend, but it is deliberately outside the compliance score — the percentage
+ *  answers "did they do what was asked", and self-care isn't that. */
+function CareLogger({
+  options,
+  logged,
+  onChanged,
+}: {
+  options: CareOption[];
+  logged: AdhocLog[];
+  onChanged: () => void;
+}) {
+  const [picked, setPicked] = useState("");
+  const [mins, setMins] = useState(15);
+  const [pain, setPain] = useState<number | "">("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!picked) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/adherence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exerciseId: picked,
+          durationDoneMins: mins,
+          pain: pain === "" ? null : pain,
+          note,
+        }),
+      });
+      if (!res.ok) {
+        setError("couldn't save that — try again");
+        return;
+      }
+      setPicked("");
+      setNote("");
+      setPain("");
+      onChanged();
+    } catch {
+      setError("network error — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    await apiFetch(`/api/adherence?id=${id}`, { method: "DELETE" });
+    onChanged();
+  }
+
+  return (
+    <section className="rounded-xl border border-edge bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        Anything else today?
+      </h2>
+      <p className="mt-1 text-xs text-muted">
+        Ice, heat, boots, TENS — whether or not it&apos;s on your plan. Your PT sees it.
+      </p>
+
+      {logged.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {logged.map((l) => (
+            <li
+              key={l.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raise/60 px-3 py-2 text-sm"
+            >
+              <span>
+                {l.name}
+                {l.durationDoneMins ? (
+                  <span className="ml-2 text-xs text-muted">{l.durationDoneMins} min</span>
+                ) : null}
+                {l.pain !== null ? (
+                  <span className="ml-2 text-xs text-muted">pain {l.pain}/10</span>
+                ) : null}
+              </span>
+              <button onClick={() => void remove(l.id)} className="text-xs text-muted hover:text-flag">
+                remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <select
+          value={picked}
+          onChange={(e) => setPicked(e.target.value)}
+          className="min-w-40 flex-1 rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
+        >
+          <option value="">Add care…</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-muted">
+          <input
+            type="number" min={1} max={600} value={mins}
+            onChange={(e) => setMins(Number(e.target.value) || 0)}
+            className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+          />
+          min
+        </label>
+        <label className="flex items-center gap-1 text-muted">
+          pain
+          <input
+            type="number" min={0} max={10} value={pain}
+            onChange={(e) => setPain(e.target.value === "" ? "" : Number(e.target.value))}
+            className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+          />
+        </label>
+      </div>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Note (optional)"
+        className="mt-2 w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+      />
+      {error && <p className="mt-2 text-sm text-flag">{error}</p>}
+      <button
+        onClick={() => void save()}
+        disabled={busy || !picked}
+        className="mt-2 rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+      >
+        {busy ? "Saving…" : "Log it"}
+      </button>
+    </section>
+  );
 }
 
 /** The patient's journal: what they write for their PT, plus whatever the PT
@@ -182,9 +332,11 @@ function currentStreakCount(streak: StreakDay[]): number {
 }
 
 function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) {
+  const dosage = dosageTypeOf(item);
   const [open, setOpen] = useState(false);
   const [sets, setSets] = useState(item.logSetsDone ?? item.sets ?? 0);
   const [reps, setReps] = useState(item.logRepsDone ?? item.reps ?? 0);
+  const [mins, setMins] = useState(item.logDurationDoneMins ?? item.durationMins ?? 0);
   const [pain, setPain] = useState(item.logPain ?? 0);
   const [effort, setEffort] = useState(item.logEffort ?? 3);
   const [note, setNote] = useState(item.logNote ?? "");
@@ -203,8 +355,11 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
         body: JSON.stringify({
           planItemId: item.id,
           completed,
-          setsDone: sets,
-          repsDone: reps,
+          // Only send what this item's dosage means. Posting reps for a bike
+          // would store a number the PT's dashboard has no way to read.
+          setsDone: dosage === "time" ? null : sets,
+          repsDone: dosage === "reps" ? reps : null,
+          durationDoneMins: dosage === "time" ? mins : null,
           pain,
           effort,
           note,
@@ -271,22 +426,46 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
             </ol>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-1">
-              sets
-              <input
-                type="number" min={0} max={20} value={sets}
-                onChange={(e) => setSets(Number(e.target.value) || 0)}
-                className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
-              />
-            </label>
-            <label className="flex items-center gap-1">
-              reps
-              <input
-                type="number" min={0} max={100} value={reps}
-                onChange={(e) => setReps(Number(e.target.value) || 0)}
-                className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
-              />
-            </label>
+            {dosage === "time" ? (
+              <>
+                <label className="flex items-center gap-1">
+                  minutes
+                  <input
+                    type="number" min={0} max={600} value={mins}
+                    onChange={(e) => setMins(Number(e.target.value) || 0)}
+                    className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                  />
+                </label>
+                {item.intensity && (
+                  <span className="text-muted">at {item.intensity}</span>
+                )}
+              </>
+            ) : (
+              <>
+                <label className="flex items-center gap-1">
+                  sets
+                  <input
+                    type="number" min={0} max={20} value={sets}
+                    onChange={(e) => setSets(Number(e.target.value) || 0)}
+                    className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                  />
+                </label>
+                {dosage === "reps" ? (
+                  <label className="flex items-center gap-1">
+                    reps
+                    <input
+                      type="number" min={0} max={100} value={reps}
+                      onChange={(e) => setReps(Number(e.target.value) || 0)}
+                      className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                    />
+                  </label>
+                ) : (
+                  <span className="text-muted">
+                    holding {item.holdSecs ?? "?"}s each
+                  </span>
+                )}
+              </>
+            )}
           </div>
           <label className="block">
             <span className="text-muted">Pain during: {pain}/10</span>
@@ -484,8 +663,7 @@ export default function PatientToday() {
                       )}
                     </span>
                     <span className="text-xs text-muted">
-                      {it.sets ? `${it.sets}×${it.reps ?? ""}` : ""}
-                      {it.holdSecs ? `${it.sets ? " · " : ""}${it.holdSecs}s hold` : ""}
+                      {dosageText(it)}
                       {it.pain !== null ? ` · pain ${it.pain}/10` : ""}
                     </span>
                   </li>
@@ -520,6 +698,12 @@ export default function PatientToday() {
           ))}
         </div>
       </section>
+
+      <CareLogger
+        options={data.careOptions}
+        logged={data.adhocToday}
+        onChanged={() => void load()}
+      />
 
       <Journal />
     </div>

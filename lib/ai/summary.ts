@@ -32,6 +32,9 @@ export type SummaryInput = {
    *  patient who was in the clinic three times as though they only ever
    *  worked alone. */
   visits: { count: number; lastOn: string | null };
+  /** Care the patient chose themselves. Given to the model separately and
+   *  labelled, so it can't be mistaken for adherence to the plan. */
+  adhoc: { date: string; name: string; durationMins: number | null }[];
 };
 
 export type SummaryResult = {
@@ -89,6 +92,13 @@ export function factSheet(input: SummaryInput): string {
       `Pain: ${pain.start} -> ${pain.end} over the window (${pain.direction}), ` +
         `${plural(pain.points.length, "day")} scored`,
     );
+  }
+
+  if (input.adhoc.length > 0) {
+    lines.push("Self-directed care (NOT prescribed, not counted in adherence above):");
+    for (const a of input.adhoc) {
+      lines.push(`  - ${a.date} ${a.name}${a.durationMins ? `, ${a.durationMins} min` : ""}`);
+    }
   }
 
   if (flags.length === 0) {
@@ -151,6 +161,11 @@ function fixtureSummary(input: SummaryInput): string {
     parts.push(
       `Seen in office ${plural(input.visits.count, "time")} in the same window, last on ${input.visits.lastOn}.`,
     );
+  }
+
+  if (input.adhoc.length > 0) {
+    const names = [...new Set(input.adhoc.map((a) => a.name))];
+    parts.push(`Also self-directed, unprescribed: ${names.slice(0, 3).join(", ")}.`);
   }
 
   return parts.join(" ");

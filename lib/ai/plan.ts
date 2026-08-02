@@ -20,6 +20,8 @@ export type SliceExercise = {
   body_regions: string[];
   equipment: string[];
   home_eligible: boolean;
+  dosage_type: "reps" | "hold" | "time";
+  kind: "exercise" | "modality";
 };
 
 export type IntakeForPrompt = {
@@ -38,6 +40,8 @@ export type DraftItem = {
   sets: number | null;
   reps: number | null;
   hold_secs: number | null;
+  duration_mins: number | null;
+  intensity: string | null;
   frequency_per_week: number;
   location: "office" | "home" | "both";
   rationale: string;
@@ -72,9 +76,11 @@ export async function buildLibrarySlice(
   pool: Pool,
   regions: string[],
   patientUserId: string,
+  clinicId: string,
 ): Promise<SliceExercise[]> {
   const { rows } = await pool.query<SliceExercise>(
     `SELECT e.id, e.name, e.source, e.difficulty, e.position, e.body_regions,
+            e.dosage_type, e.kind,
             COALESCE(array_agg(ec.name) FILTER (WHERE ec.id IS NOT NULL), '{}') AS equipment,
             (count(ec.id) = 0 OR bool_or(
               ec.slug = ANY($3) OR pe.equipment_id IS NOT NULL
@@ -84,11 +90,18 @@ export async function buildLibrarySlice(
      LEFT JOIN equipment_catalog ec ON ec.id = ee.equipment_id
      LEFT JOIN patient_equipment pe
        ON pe.equipment_id = ec.id AND pe.user_id = $2
-     WHERE e.archived_at IS NULL AND e.tier = 'rehab' AND e.body_regions && $1
+     WHERE e.archived_at IS NULL AND e.tier = 'rehab'
+       -- Modalities are not region-specific: you ice whatever hurts. Gating
+       -- them on body_regions (which is empty for all of them) would hide
+       -- every one of them from the draft.
+       AND (e.kind = 'modality' OR e.body_regions && $1)
+       -- Clinic-authored exercises are private to their clinic until shared.
+       AND (e.clinic_id IS NULL OR e.shared OR e.clinic_id = $4)
      GROUP BY e.id
-     ORDER BY (e.source = 'carryover') DESC, e.difficulty NULLS LAST, e.name
+     ORDER BY (e.kind = 'modality'), (e.source = 'carryover') DESC,
+              e.difficulty NULLS LAST, e.name
      LIMIT ${SLICE_LIMIT}`,
-    [regions, patientUserId, HOUSEHOLD_SLUGS],
+    [regions, patientUserId, HOUSEHOLD_SLUGS, clinicId],
   );
   return rows;
 }
@@ -125,11 +138,20 @@ export function validateItems(
       ? (String(r.location) as DraftItem["location"])
       : "home";
     if (location !== "office" && !ex.home_eligible) location = "office";
+
+    // Dosage is whatever the exercise's type calls for. A model that returns
+    // "3 sets of 15" for a stationary bike is answering the wrong question, so
+    // the fields that don't belong to the type are dropped rather than stored
+    // — otherwise the patient's logger would render a rep counter for a bike.
+    const timed = ex.dosage_type === "time";
+    const held = ex.dosage_type === "hold";
     items.push({
       exercise_id: ex.id,
-      sets: clamp(r.sets, 1, 10),
-      reps: clamp(r.reps, 1, 50),
-      hold_secs: clamp(r.hold_secs, 1, 300),
+      sets: timed ? null : clamp(r.sets, 1, 10),
+      reps: timed || held ? null : clamp(r.reps, 1, 50),
+      hold_secs: held ? clamp(r.hold_secs, 1, 300) : null,
+      duration_mins: timed ? (clamp(r.duration_mins, 1, 240) ?? 10) : null,
+      intensity: timed ? String(r.intensity ?? "").slice(0, 80) || null : null,
       frequency_per_week: clamp(r.frequency_per_week, 1, 14) ?? 5,
       location,
       rationale: String(r.rationale ?? "").slice(0, 500),
@@ -157,18 +179,17 @@ function fixtureDraft(intake: IntakeForPrompt, slice: SliceExercise[]): unknown[
           : 1,
     )
     .slice(0, 8)
-    .map((e) => {
-      const isometric = /set|sit|plank|hold/i.test(e.name);
-      return {
-        exercise_id: e.id,
-        sets: 3,
-        reps: isometric ? null : 10,
-        hold_secs: isometric ? 10 : null,
-        frequency_per_week: (e.difficulty ?? 3) <= 2 ? 7 : 5,
-        location: e.home_eligible ? "both" : "office",
-        rationale: `Level ${e.difficulty ?? "?"} ${e.body_regions.join("/")} work within current pain and recovery stage.`,
-      };
-    });
+    .map((e) => ({
+      exercise_id: e.id,
+      sets: e.dosage_type === "time" ? null : 3,
+      reps: e.dosage_type === "reps" ? 10 : null,
+      hold_secs: e.dosage_type === "hold" ? 10 : null,
+      duration_mins: e.dosage_type === "time" ? 10 : null,
+      intensity: null,
+      frequency_per_week: (e.difficulty ?? 3) <= 2 ? 7 : 5,
+      location: e.home_eligible ? "both" : "office",
+      rationale: `Level ${e.difficulty ?? "?"} ${e.body_regions.join("/") || "general"} work within current pain and recovery stage.`,
+    }));
 }
 
 const PLAN_TOOL = {
@@ -185,9 +206,18 @@ const PLAN_TOOL = {
           required: ["exercise_id", "frequency_per_week", "location", "rationale"],
           properties: {
             exercise_id: { type: "string", description: "MUST be an id from the LIBRARY list" },
-            sets: { type: "integer" },
-            reps: { type: "integer", description: "omit for pure isometric holds" },
-            hold_secs: { type: "integer", description: "hold duration for isometrics" },
+            sets: { type: "integer", description: "dosage_type=reps only" },
+            reps: { type: "integer", description: "dosage_type=reps only" },
+            hold_secs: { type: "integer", description: "dosage_type=hold only" },
+            duration_mins: {
+              type: "integer",
+              description: "dosage_type=time only — minutes on the bike, under the ice, etc.",
+            },
+            intensity: {
+              type: "string",
+              description:
+                "dosage_type=time only. Free text in the units that item uses: 'level 2', '2.5 mph', 'low pressure'. Omit if the PT should decide.",
+            },
             frequency_per_week: { type: "integer" },
             location: { type: "string", enum: ["office", "home", "both"] },
             rationale: {
@@ -209,7 +239,9 @@ Rules:
 - Propose 6-10 items forming a coherent early plan: activation/range work before loading, bilateral before unilateral.
 - Be conservative: respect days since surgery/onset, current pain, and every stated restriction verbatim.
 - Items marked home_eligible=false can only be location "office".
-- Dosage: isometrics get hold_secs (no reps); everything else gets sets x reps. Daily frequency only for gentle early-phase work.
+- Dosage follows each item's dosage_type, and nothing else: reps -> sets + reps; hold -> sets + hold_secs; time -> duration_mins (+ intensity if you can name a sensible starting setting). Never prescribe sets and reps for a timed item.
+- MODALITY items (ice, heat, TENS, compression, elevation) are care, not exercise. Include them only when the stage of recovery genuinely calls for one; they are always dosage_type=time. Do not pad a plan with them.
+- Daily frequency only for gentle early-phase work.
 - Each rationale is ONE plain-English sentence a patient can understand.`;
 
 async function litheDraft(
@@ -231,7 +263,7 @@ async function litheDraft(
   const libraryLines = slice
     .map(
       (e) =>
-        `${e.id} | ${e.name} | difficulty ${e.difficulty ?? "?"}/5 | ${e.position ?? "-"} | ${e.body_regions.join(",")} | equipment: ${e.equipment.join("+") || "none"} | home_eligible=${e.home_eligible}`,
+        `${e.id} | ${e.name} | ${e.kind} | dosage_type=${e.dosage_type} | difficulty ${e.difficulty ?? "?"}/5 | ${e.position ?? "-"} | ${e.body_regions.join(",")} | equipment: ${e.equipment.join("+") || "none"} | home_eligible=${e.home_eligible}`,
     )
     .join("\n");
 
@@ -246,7 +278,7 @@ Narrative: ${intake.narrative || "none"}
 
 PATIENT HOME EQUIPMENT: ${equipmentNames.join(", ") || "none recorded"} (plus assumed household: wall, chair, towel, a step)
 
-LIBRARY (id | name | difficulty | position | regions | equipment | home_eligible)
+LIBRARY (id | name | kind | dosage_type | difficulty | position | regions | equipment | home_eligible)
 ${libraryLines}
 
 Propose the plan via the propose_plan tool.`;
@@ -276,11 +308,12 @@ export async function draftPlan(args: {
   pool: Pool;
   intake: IntakeForPrompt;
   patientUserId: string;
+  clinicId: string;
   jwt: string;
 }): Promise<DraftResult> {
-  const { pool, intake, patientUserId, jwt } = args;
+  const { pool, intake, patientUserId, clinicId, jwt } = args;
   const regions = intake.body_regions.length ? intake.body_regions : ["knee"];
-  const slice = await buildLibrarySlice(pool, regions, patientUserId);
+  const slice = await buildLibrarySlice(pool, regions, patientUserId, clinicId);
 
   const { rows: eq } = await pool.query<{ name: string }>(
     `SELECT ec.name FROM patient_equipment pe

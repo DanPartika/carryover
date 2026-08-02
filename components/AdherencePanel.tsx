@@ -58,6 +58,13 @@ type Data = {
     direction: "down" | "up" | "flat" | null;
   };
   flags: Flag[];
+  adhoc: {
+    date: string;
+    name: string;
+    durationMins: number | null;
+    pain: number | null;
+    note: string | null;
+  }[];
   visits: { count: number; lastOn: string | null };
   summary: Summary | null;
 };
@@ -355,6 +362,37 @@ export default function AdherencePanel({
               </ul>
             )}
           </div>
+
+          {/* Self-directed care. Kept visually apart from the compliance bar
+              because it is deliberately NOT in that number — "skipped the
+              strengthening but iced four times" is a different story from
+              "did nothing", and the percentage can't tell them apart. */}
+          {data.adhoc.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Also did on their own
+              </h3>
+              <p className="mt-0.5 text-xs text-muted">Not prescribed — not in the score above.</p>
+              <ul className="mt-2 space-y-1">
+                {data.adhoc.map((a, i) => (
+                  <li
+                    key={`${a.date}-${a.name}-${i}`}
+                    className="flex flex-wrap items-center justify-between gap-x-2 rounded-lg bg-raise/60 px-3 py-1.5 text-sm"
+                  >
+                    <span>
+                      {a.name}
+                      {a.note && <span className="ml-2 text-xs text-muted">{a.note}</span>}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {shortDate(a.date)}
+                      {a.durationMins ? ` · ${a.durationMins} min` : ""}
+                      {a.pain !== null ? ` · pain ${a.pain}/10` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* AI summary */}
           <div className="border-t border-edge pt-4">

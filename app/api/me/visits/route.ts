@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
 
   const { rows: items } = await pool.query(
     `SELECT vi.visit_id AS "visitId", e.name, (e.images ->> 0) AS image,
-            vi.sets, vi.reps, vi.hold_secs AS "holdSecs", vi.pain, vi.note,
+            e.dosage_type AS "dosageType",
+            vi.sets, vi.reps, vi.hold_secs AS "holdSecs",
+            vi.duration_mins AS "durationMins", vi.intensity, vi.pain, vi.note,
             (vi.plan_item_id IS NULL) AS "adHoc"
      FROM visit_items vi JOIN exercises e ON e.id = vi.exercise_id
      WHERE vi.visit_id = ANY($1::uuid[])

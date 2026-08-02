@@ -8,24 +8,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
+import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
 type PlanItem = {
   id: string;
   exerciseId: string;
   name: string;
+  dosageType: DosageType;
+  kind: "exercise" | "modality";
   sets: number | null;
   reps: number | null;
   holdSecs: number | null;
+  durationMins: number | null;
+  intensity: string | null;
   location: "office" | "home" | "both";
 };
 
 type VisitItem = {
   exerciseId: string;
   name?: string;
+  dosageType?: DosageType;
   planItemId: string | null;
   sets: number | null;
   reps: number | null;
   holdSecs: number | null;
+  durationMins: number | null;
+  intensity: string | null;
   pain: number | null;
   note: string | null;
 };
@@ -41,7 +49,12 @@ type Visit = {
   items: VisitItem[];
 };
 
-type SearchHit = { id: string; name: string; difficulty: number | null };
+type SearchHit = {
+  id: string;
+  name: string;
+  difficulty: number | null;
+  dosageType: DosageType;
+};
 
 function minutesBetween(a: string, b: string): number {
   return Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 60000));
@@ -253,10 +266,14 @@ export default function VisitMode({
                         ? void untap(p.exerciseId)
                         : void upsert({
                             exerciseId: p.exerciseId,
+                            name: p.name,
+                            dosageType: dosageTypeOf(p),
                             planItemId: p.id,
                             sets: p.sets,
                             reps: p.reps,
                             holdSecs: p.holdSecs,
+                            durationMins: p.durationMins,
+                            intensity: p.intensity,
                             pain: null,
                             note: null,
                           })
@@ -276,8 +293,7 @@ export default function VisitMode({
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{p.name}</span>
                       <span className="block text-xs text-muted">
-                        {p.sets ? `${p.sets}×${p.reps ?? ""}` : ""}
-                        {p.holdSecs ? `${p.sets ? " · " : ""}${p.holdSecs}s hold` : ""} · {p.location}
+                        {dosageText(p)} · {p.location}
                       </span>
                     </span>
                   </button>
@@ -329,10 +345,13 @@ export default function VisitMode({
                         void upsert({
                           exerciseId: h.id,
                           name: h.name,
+                          dosageType: h.dosageType,
                           planItemId: null,
-                          sets: 3,
-                          reps: 10,
-                          holdSecs: null,
+                          sets: h.dosageType === "time" ? null : 3,
+                          reps: h.dosageType === "reps" ? 10 : null,
+                          holdSecs: h.dosageType === "hold" ? 20 : null,
+                          durationMins: h.dosageType === "time" ? 10 : null,
+                          intensity: null,
                           pain: null,
                           note: null,
                         });
@@ -425,6 +444,7 @@ function ItemDetail({
     if (
       draft.sets !== item.sets ||
       draft.reps !== item.reps ||
+      draft.durationMins !== item.durationMins ||
       draft.pain !== item.pain ||
       draft.note !== item.note
     ) {
@@ -444,24 +464,38 @@ function ItemDetail({
   }
 
   const num = (v: string) => (v === "" ? null : Number(v));
+  const timed = dosageTypeOf(draft) === "time";
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted" onBlur={commit}>
-      <label className="flex items-center gap-1">
-        sets
-        <input
-          type="number" min={0} max={20} value={draft.sets ?? ""}
-          onChange={(e) => setDraft({ ...draft, sets: num(e.target.value) })}
-          className={numInput}
-        />
-      </label>
-      <label className="flex items-center gap-1">
-        reps
-        <input
-          type="number" min={0} max={100} value={draft.reps ?? ""}
-          onChange={(e) => setDraft({ ...draft, reps: num(e.target.value) })}
-          className={numInput}
-        />
-      </label>
+      {timed ? (
+        <label className="flex items-center gap-1">
+          minutes
+          <input
+            type="number" min={0} max={240} value={draft.durationMins ?? ""}
+            onChange={(e) => setDraft({ ...draft, durationMins: num(e.target.value) })}
+            className={numInput}
+          />
+        </label>
+      ) : (
+        <>
+          <label className="flex items-center gap-1">
+            sets
+            <input
+              type="number" min={0} max={20} value={draft.sets ?? ""}
+              onChange={(e) => setDraft({ ...draft, sets: num(e.target.value) })}
+              className={numInput}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            reps
+            <input
+              type="number" min={0} max={100} value={draft.reps ?? ""}
+              onChange={(e) => setDraft({ ...draft, reps: num(e.target.value) })}
+              className={numInput}
+            />
+          </label>
+        </>
+      )}
       <label className="flex items-center gap-1">
         pain
         <input

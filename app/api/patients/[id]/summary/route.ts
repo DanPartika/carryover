@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!view.plan) {
     return NextResponse.json({ error: "no active plan to summarize" }, { status: 400 });
   }
-  if (view.compliance.completed === 0 && view.flags.length === 0) {
+  if (view.compliance.completed === 0 && view.flags.length === 0 && view.adhoc.length === 0) {
     // The dashboard already states "nothing logged" in plain text. Spending a
     // model call to restate it is the one summary that can't earn its cost.
     return NextResponse.json(
@@ -60,6 +60,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         pain: view.pain,
         flags: view.flags,
         visits: view.visits,
+        adhoc: view.adhoc.map((a) => ({
+          date: a.date,
+          name: a.name,
+          durationMins: a.durationMins,
+        })),
       },
       jwt: user.token,
     });

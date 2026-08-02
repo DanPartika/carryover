@@ -37,6 +37,13 @@ export async function GET(req: NextRequest) {
   // Default view is the curated rehab tier; ?tier=all opts in to gym extras.
   if (p.get("tier") !== "all") where.push(`e.tier = 'rehab'`);
 
+  // Modalities (ice, heat, TENS, compression) share the exercises table but
+  // are not exercises — they'd be noise in a browse or an add-exercise search.
+  // ?kind=modality asks for them; ?kind=any drops the filter entirely.
+  const kind = p.get("kind");
+  if (kind === "modality") where.push(`e.kind = 'modality'`);
+  else if (kind !== "any") where.push(`e.kind = 'exercise'`);
+
   const difficulty = Number(p.get("difficulty"));
   if (difficulty >= 1 && difficulty <= 5) where.push(`e.difficulty <= ${arg(difficulty)}`);
 
@@ -55,6 +62,7 @@ export async function GET(req: NextRequest) {
   const whereSql = where.join(" AND ");
   const { rows: items } = await pool.query(
     `SELECT e.id, e.name, e.source, e.body_regions, e.position, e.difficulty, e.tags,
+            e.dosage_type AS "dosageType", e.kind,
             (e.images ->> 0) AS image,
             COALESCE(
               (SELECT array_agg(ec.name ORDER BY ec.name)

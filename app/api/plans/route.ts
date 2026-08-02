@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         pool,
         intake,
         patientUserId: episode.patientUserId,
+        clinicId: episode.clinicId,
         jwt: user.token,
       });
       items = result.items;
@@ -103,14 +104,17 @@ export async function POST(req: NextRequest) {
       const it = items[i];
       await client.query(
         `INSERT INTO plan_items
-           (plan_id, exercise_id, sets, reps, hold_secs, frequency_per_week, location, rationale, sort)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+           (plan_id, exercise_id, sets, reps, hold_secs, duration_mins, intensity,
+            frequency_per_week, location, rationale, sort)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           plan.id,
           it.exercise_id,
           it.sets,
           it.reps,
           it.hold_secs,
+          it.duration_mins,
+          it.intensity,
           it.frequency_per_week,
           it.location,
           it.rationale,

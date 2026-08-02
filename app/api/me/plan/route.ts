@@ -37,11 +37,14 @@ export async function GET(req: NextRequest) {
       plan = { id: p.id, approvedAt: p.approved_at };
       const { rows } = await pool.query(
         `SELECT pi.id, pi.exercise_id AS "exerciseId", pi.sets, pi.reps,
-                pi.hold_secs AS "holdSecs", pi.frequency_per_week AS "frequencyPerWeek",
+                pi.hold_secs AS "holdSecs", pi.duration_mins AS "durationMins",
+                pi.intensity, pi.frequency_per_week AS "frequencyPerWeek",
                 pi.location, pi.rationale,
                 e.name, e.instructions, (e.images ->> 0) AS image, e.difficulty,
+                e.dosage_type AS "dosageType", e.kind,
                 al.id AS "logId", al.completed AS "logCompleted",
                 al.sets_done AS "logSetsDone", al.reps_done AS "logRepsDone",
+                al.duration_done_mins AS "logDurationDoneMins",
                 al.pain AS "logPain", al.effort AS "logEffort", al.note AS "logNote",
                 al.flag_for_pt AS "logFlagForPt"
          FROM plan_items pi
@@ -70,6 +73,27 @@ export async function GET(req: NextRequest) {
     return { date: iso, completed: loggedDates.has(iso) };
   });
 
+  // Care the patient did on their own initiative — no plan item behind it, so
+  // it never touches the compliance percentage, but the PT still sees it.
+  const { rows: adhocToday } = await pool.query(
+    `SELECT al.id, al.exercise_id AS "exerciseId", e.name,
+            al.duration_done_mins AS "durationDoneMins", al.pain, al.note
+     FROM adherence_logs al JOIN exercises e ON e.id = al.exercise_id
+     WHERE al.patient_user_id = $1 AND al.plan_item_id IS NULL
+       AND al.log_date = CURRENT_DATE
+     ORDER BY al.created_at`,
+    [user.id],
+  );
+
+  // The "log something else" picker. Modalities only: this is for care the
+  // patient reaches for unprompted (ice, boots, heat), not for browsing 887
+  // exercises on a phone.
+  const { rows: careOptions } = await pool.query(
+    `SELECT id, name FROM exercises
+     WHERE kind = 'modality' AND archived_at IS NULL AND clinic_id IS NULL
+     ORDER BY name`,
+  );
+
   const { rows: equipment } = await pool.query(
     "SELECT id, slug, name, kind FROM equipment_catalog ORDER BY kind, name",
   );
@@ -84,6 +108,8 @@ export async function GET(req: NextRequest) {
     plan,
     items,
     streak,
+    adhocToday,
+    careOptions,
     equipment: equipment.map((e) => ({ ...e, owned: ownedIds.has(e.id) })),
   });
 }
