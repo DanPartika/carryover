@@ -9,6 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
+import ExerciseComposer from "@/components/ExerciseComposer";
 import NotesPanel from "@/components/NotesPanel";
 import VisitMode from "@/components/VisitMode";
 import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
@@ -108,7 +109,34 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
   const [dirty, setDirty] = useState(false);
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [composing, setComposing] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Drop a freshly created (or searched) exercise straight into the draft,
+   *  seeded with the dosage its type expects. */
+  function addToDraft(hit: { id: string; name: string; dosageType: DosageType }) {
+    setDraftItems((prev) => [
+      ...(prev ?? []),
+      {
+        exerciseId: hit.id,
+        name: hit.name,
+        image: null,
+        dosageType: hit.dosageType,
+        kind: "exercise",
+        sets: hit.dosageType === "time" ? null : 3,
+        reps: hit.dosageType === "reps" ? 10 : null,
+        holdSecs: hit.dosageType === "hold" ? 20 : null,
+        durationMins: hit.dosageType === "time" ? 10 : null,
+        intensity: null,
+        frequencyPerWeek: 5,
+        location: "home",
+        rationale: "",
+      },
+    ]);
+    setDirty(true);
+    setSearch("");
+    setHits([]);
+  }
 
   const reload = useCallback(async () => {
     try {
@@ -643,55 +671,54 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
               ))}
             </ul>
 
-            <div className="relative">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Add exercise — search the library…"
-                className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+            {composing !== null ? (
+              <ExerciseComposer
+                initialName={composing}
+                clinicId={clinicId}
+                onCreated={(created) => {
+                  setComposing(null);
+                  addToDraft(created);
+                }}
+                onCancel={() => setComposing(null)}
               />
-              {hits.length > 0 && (
-                <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-card shadow-lg">
-                  {hits.map((h) => (
-                    <li key={h.id}>
+            ) : (
+              <div className="relative">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Add exercise — search the library…"
+                  className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+                />
+                {search.trim() && (
+                  <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-card shadow-lg">
+                    {hits.map((h) => (
+                      <li key={h.id}>
+                        <button
+                          onClick={() => addToDraft(h)}
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-raise"
+                        >
+                          {h.name}
+                          {h.difficulty ? (
+                            <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                    {/* Always offered, not only on zero results: the search may
+                        have found something similar-but-wrong, and that's
+                        exactly when a PT wants their own version. */}
+                    <li className="border-t border-edge">
                       <button
-                        onClick={() => {
-                          setDraftItems((prev) => [
-                            ...(prev ?? []),
-                            // Seed the dosage the added item's type expects,
-                            // so the editor opens on the right fields.
-                            {
-                              exerciseId: h.id,
-                              name: h.name,
-                              image: null,
-                              dosageType: h.dosageType,
-                              kind: h.kind,
-                              sets: h.dosageType === "time" ? null : 3,
-                              reps: h.dosageType === "reps" ? 10 : null,
-                              holdSecs: h.dosageType === "hold" ? 20 : null,
-                              durationMins: h.dosageType === "time" ? 10 : null,
-                              intensity: null,
-                              frequencyPerWeek: 5,
-                              location: "home",
-                              rationale: "",
-                            },
-                          ]);
-                          setDirty(true);
-                          setSearch("");
-                          setHits([]);
-                        }}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-raise"
+                        onClick={() => setComposing(search.trim())}
+                        className="block w-full px-3 py-2 text-left text-sm text-accent-deep hover:bg-raise"
                       >
-                        {h.name}
-                        {h.difficulty ? (
-                          <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
-                        ) : null}
+                        ＋ Create &ldquo;{search.trim()}&rdquo; for this clinic
                       </button>
                     </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                  </ul>
+                )}
+              </div>
+            )}
             </fieldset>
 
             <div className="flex flex-wrap gap-2 border-t border-edge pt-3">

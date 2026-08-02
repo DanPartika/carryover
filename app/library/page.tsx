@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
+import ExerciseComposer from "@/components/ExerciseComposer";
 
 type Item = {
   id: string;
@@ -18,6 +19,8 @@ type Item = {
   tags: string[];
   image: string | null;
   equipment: string[];
+  clinicId: string | null;
+  shared: boolean;
 };
 
 type Detail = {
@@ -35,6 +38,10 @@ type Detail = {
     license: string;
     license_author: string | null;
     source_url: string | null;
+    clinic_id: string | null;
+    clinicName: string | null;
+    shared: boolean;
+    canEdit: boolean;
   };
   equipment: { slug: string; name: string; kind: string }[];
   progressions: {
@@ -106,6 +113,7 @@ export default function LibraryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [composing, setComposing] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const authReady = !loading && (!enabled || !!session);
@@ -151,6 +159,21 @@ export default function LibraryPage() {
     if (res.ok) setDetail((await res.json()) as Detail);
   }
 
+  /** Promote a clinic's exercise into the library every clinic sees, or pull
+   *  it back. Optimistic on the open panel, then a reload so the list badge
+   *  agrees with it. */
+  async function toggleShared(d: Detail) {
+    const next = !d.exercise.shared;
+    setDetail({ ...d, exercise: { ...d.exercise, shared: next } });
+    const res = await apiFetch(`/api/exercises/${d.exercise.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shared: next }),
+    });
+    if (!res.ok) setDetail(d);
+    else void load(0, false);
+  }
+
   if (!authReady) return null;
 
   return (
@@ -184,8 +207,25 @@ export default function LibraryPage() {
             />
             Include gym extras
           </label>
+          <button
+            onClick={() => setComposing(true)}
+            className="rounded-full bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110"
+          >
+            ＋ New exercise
+          </button>
         </div>
       </div>
+
+      {composing && (
+        <ExerciseComposer
+          onCreated={(created) => {
+            setComposing(false);
+            void load(0, false);
+            void openDetail(created.id);
+          }}
+          onCancel={() => setComposing(false)}
+        />
+      )}
 
       <div className="flex flex-wrap gap-2">
         <input
@@ -262,6 +302,19 @@ export default function LibraryPage() {
               {it.source === "carryover" && (
                 <span className="rounded-full bg-accent-deep px-2 py-0.5 text-[11px] font-medium text-white">
                   knee core
+                </span>
+              )}
+              {/* Who wrote it and who can see it — a PT scanning the grid
+                  should never wonder whether an entry is theirs. */}
+              {it.clinicId && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    it.shared
+                      ? "bg-[var(--color-clinic)] text-white"
+                      : "border border-edge text-muted"
+                  }`}
+                >
+                  {it.shared ? "shared" : "our clinic"}
                 </span>
               )}
               {it.body_regions.slice(0, 3).map((r) => (
@@ -364,6 +417,31 @@ export default function LibraryPage() {
                     → harder: <span className="underline">{p.name}</span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {detail.exercise.clinic_id && (
+              <div className="mt-4 rounded-lg border border-edge p-3 text-xs">
+                <p className="font-medium">
+                  Written by {detail.exercise.clinicName ?? "your clinic"}
+                </p>
+                <p className="mt-0.5 text-muted">
+                  {detail.exercise.shared
+                    ? "Shared — every clinic on Carryover can prescribe this."
+                    : "Private to your clinic. Nobody else can see or prescribe it."}
+                </p>
+                {detail.exercise.canEdit && (
+                  <button
+                    onClick={() => void toggleShared(detail)}
+                    className={`mt-2 rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                      detail.exercise.shared
+                        ? "border border-edge text-muted hover:bg-raise"
+                        : "bg-accent-deep text-white hover:brightness-110"
+                    }`}
+                  >
+                    {detail.exercise.shared ? "Make private again" : "Share with every clinic"}
+                  </button>
+                )}
               </div>
             )}
 
