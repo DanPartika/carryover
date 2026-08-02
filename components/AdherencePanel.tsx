@@ -58,6 +58,7 @@ type Data = {
     direction: "down" | "up" | "flat" | null;
   };
   flags: Flag[];
+  visits: { count: number; lastOn: string | null };
   summary: Summary | null;
 };
 
@@ -249,7 +250,10 @@ export default function AdherencePanel({
               {data.windowDays < days
                 ? `Since the plan was approved on ${shortDate(data.windowFrom)} — ${data.windowDays} days, not the full ${days}.`
                 : `Last ${days} days, since ${shortDate(data.windowFrom)}.`}{" "}
-              Office items are excluded — those are recorded at the visit.
+              Home work only.{" "}
+              {data.visits.count > 0
+                ? `${data.visits.count} in-office visit${data.visits.count === 1 ? "" : "s"} in the same window, last on ${shortDate(data.visits.lastOn!)} — office work is counted there.`
+                : "No in-office visits recorded in this window."}
             </p>
           </div>
 

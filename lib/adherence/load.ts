@@ -30,6 +30,9 @@ export type AdherenceView = {
   compliance: Compliance;
   pain: PainTrend;
   flags: FlagEntry[];
+  /** In-office sessions in the same window — the other half of the split the
+   *  home-only compliance number deliberately leaves out. */
+  visits: { count: number; lastOn: string | null };
   /** Newest adherence_logs.updated_at — the staleness key a stored summary is
    *  compared against. Null when nothing is logged.
    *
@@ -68,6 +71,7 @@ export async function loadAdherence(
     compliance: { scorable: false, expected: 0, completed: 0, percent: null, items: [] },
     pain: { points: [], start: null, end: null, direction: null },
     flags: [],
+    visits: { count: 0, lastOn: null },
     logsThrough: null,
   };
   if (!plan) return empty;
@@ -104,6 +108,16 @@ export async function loadAdherence(
     [plan.id, windowFrom, today],
   );
 
+  const {
+    rows: [visitStats],
+  } = await pool.query<{ count: number; lastOn: string | null }>(
+    `SELECT count(*)::int AS count, max(started_at)::date::text AS "lastOn"
+     FROM visits
+     WHERE episode_id = $1 AND ended_at IS NOT NULL
+       AND started_at::date BETWEEN $2::date AND $3::date`,
+    [episodeId, windowFrom, today],
+  );
+
   // Taken over the whole plan, not just the window: a revision to an older log
   // is still news the PT's stored summary predates.
   const {
@@ -123,6 +137,7 @@ export async function loadAdherence(
     compliance: computeCompliance(items, logs, windowDays),
     pain: computePainTrend(logs),
     flags: flagRows,
+    visits: visitStats,
     logsThrough,
   };
 }

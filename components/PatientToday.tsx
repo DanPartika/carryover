@@ -6,7 +6,7 @@
 // (built in step 3, unpopulated until now). Phone-first — large tap targets,
 // no PT-facing controls.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 
 type Item = {
@@ -35,6 +35,36 @@ type Item = {
 type Equipment = { id: string; slug: string; name: string; kind: string; owned: boolean };
 type StreakDay = { date: string; completed: boolean };
 
+type VisitItem = {
+  name: string;
+  sets: number | null;
+  reps: number | null;
+  holdSecs: number | null;
+  pain: number | null;
+  note: string | null;
+  adHoc: boolean;
+};
+
+type Visit = {
+  id: string;
+  startedAt: string;
+  /** Postgres-resolved day label — see the note in /api/visits. */
+  startedOn: string;
+  endedAt: string;
+  note: string | null;
+  ptName: string | null;
+  items: VisitItem[];
+};
+
+type Note = {
+  id: string;
+  body: string;
+  authorRole: "pt" | "patient";
+  authorName: string | null;
+  createdAt: string;
+  mine: boolean;
+};
+
 type PlanData = {
   episode: { id: string; condition: string } | null;
   plan: { id: string; approvedAt: string } | null;
@@ -49,6 +79,97 @@ function dosageLine(it: Item): string {
   if (it.holdSecs) parts.push(`${it.holdSecs}s hold`);
   parts.push(`${it.frequencyPerWeek}/wk`);
   return parts.join(" · ");
+}
+
+/** The patient's journal: what they write for their PT, plus whatever the PT
+ *  chose to share back. Everything here is two-way visible by construction —
+ *  the API never sends a private PT note to this side. */
+function Journal() {
+  const [notes, setNotes] = useState<Note[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/me/notes");
+      if (res.ok) setNotes(((await res.json()) as { notes: Note[] }).notes);
+    } catch {
+      setError("couldn't load your journal");
+    }
+  }, []);
+
+  useEffect(() => {
+    // setState runs inside load() after an await, not in the effect body.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function add() {
+    const body = draft.trim();
+    if (!body) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/me/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        setError("couldn't save that — try again");
+        return;
+      }
+      setDraft("");
+      await load();
+    } catch {
+      setError("network error — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-edge bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Journal</h2>
+      <p className="mt-1 text-xs text-muted">
+        Anything you write here goes to your PT. They can reply by sharing a note back.
+      </p>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={2}
+        placeholder="How's the knee feeling?"
+        className="mt-2 w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+      />
+      <button
+        onClick={() => void add()}
+        disabled={busy || !draft.trim()}
+        className="mt-2 rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+      >
+        {busy ? "Saving…" : "Add to journal"}
+      </button>
+      {error && <p className="mt-2 text-sm text-flag">{error}</p>}
+      <ul className="mt-3 space-y-2">
+        {notes?.map((n) => (
+          <li
+            key={n.id}
+            className={`rounded-lg px-3 py-2 text-sm ${
+              n.authorRole === "pt" ? "bg-[var(--color-clinic)]/10" : "bg-raise/60"
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+              <span className="font-medium text-ink">
+                {n.authorRole === "pt" ? `From ${n.authorName ?? "your PT"}` : "You"}
+              </span>
+              <span>{new Date(n.createdAt).toLocaleDateString()}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function currentStreakCount(streak: StreakDay[]): number {
@@ -218,17 +339,24 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
 
 export default function PatientToday() {
   const [data, setData] = useState<PlanData | null>(null);
+  const [visits, setVisits] = useState<Visit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"home" | "office">("home");
 
   async function load() {
     try {
-      const res = await apiFetch("/api/me/plan");
-      if (!res.ok) {
-        setError(`load failed (${res.status})`);
+      const [planRes, visitRes] = await Promise.all([
+        apiFetch("/api/me/plan"),
+        apiFetch("/api/me/visits"),
+      ]);
+      if (!planRes.ok) {
+        setError(`load failed (${planRes.status})`);
         return;
       }
-      setData((await res.json()) as PlanData);
+      setData((await planRes.json()) as PlanData);
+      // A failed visit fetch shouldn't blank the Today view — home exercises
+      // are the reason the patient opened the app.
+      if (visitRes.ok) setVisits(((await visitRes.json()) as { visits: Visit[] }).visits);
     } catch {
       setError("network error — pull to refresh");
     }
@@ -258,12 +386,17 @@ export default function PatientToday() {
   if (!data) return <p className="text-sm text-muted">Loading…</p>;
 
   if (!data.plan) {
+    // No plan yet is not nothing to do: the journal still reaches the PT, and
+    // is often where a patient says why they haven't started.
     return (
-      <div className="rounded-xl border border-edge bg-card p-6 text-center">
-        <p className="font-semibold">No active plan yet</p>
-        <p className="mt-1 text-sm text-muted">
-          Once your PT approves your program, it shows up here.
-        </p>
+      <div className="space-y-5">
+        <div className="rounded-xl border border-edge bg-card p-6 text-center">
+          <p className="font-semibold">No active plan yet</p>
+          <p className="mt-1 text-sm text-muted">
+            Once your PT approves your program, it shows up here.
+          </p>
+        </div>
+        <Journal />
       </div>
     );
   }
@@ -318,11 +451,49 @@ export default function PatientToday() {
             ))}
           </ul>
         )
-      ) : (
+      ) : !visits || visits.length === 0 ? (
         <p className="rounded-xl border border-edge bg-card p-6 text-center text-sm text-muted">
-          Your in-office visit history will show up here once your clinic starts logging
-          sessions.
+          Nothing here yet — your visits show up after your PT wraps one up.
         </p>
+      ) : (
+        <ul className="space-y-2">
+          {visits.map((v) => (
+            <li key={v.id} className="rounded-xl border border-edge bg-card p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-semibold">
+                  {new Date(`${v.startedOn}T00:00:00Z`).toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    timeZone: "UTC",
+                  })}
+                </span>
+                {v.ptName && <span className="text-xs text-muted">with {v.ptName}</span>}
+              </div>
+              {v.note && <p className="mt-1 text-sm">{v.note}</p>}
+              <ul className="mt-2 space-y-1">
+                {v.items.map((it, i) => (
+                  <li
+                    key={`${v.id}-${i}`}
+                    className="flex flex-wrap items-center justify-between gap-x-2 rounded-lg bg-raise/60 px-3 py-1.5 text-sm"
+                  >
+                    <span>
+                      {it.name}
+                      {it.adHoc && (
+                        <span className="ml-2 text-xs text-muted">added in session</span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {it.sets ? `${it.sets}×${it.reps ?? ""}` : ""}
+                      {it.holdSecs ? `${it.sets ? " · " : ""}${it.holdSecs}s hold` : ""}
+                      {it.pain !== null ? ` · pain ${it.pain}/10` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       )}
 
       <section className="rounded-xl border border-edge bg-card p-4">
@@ -349,6 +520,8 @@ export default function PatientToday() {
           ))}
         </div>
       </section>
+
+      <Journal />
     </div>
   );
 }

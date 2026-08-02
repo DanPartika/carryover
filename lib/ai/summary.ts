@@ -28,6 +28,10 @@ export type SummaryInput = {
   compliance: Compliance;
   pain: PainTrend;
   flags: FlagEntry[];
+  /** In-office sessions in the same window. Without this the model reads a
+   *  patient who was in the clinic three times as though they only ever
+   *  worked alone. */
+  visits: { count: number; lastOn: string | null };
 };
 
 export type SummaryResult = {
@@ -56,6 +60,11 @@ export function factSheet(input: SummaryInput): string {
   const lines: string[] = [];
   lines.push(`Condition: ${input.condition}`);
   lines.push(`Window: last ${plural(windowDays, "day")} of home exercise`);
+  lines.push(
+    input.visits.count > 0
+      ? `In-office visits in the same window: ${input.visits.count}, most recent ${input.visits.lastOn}`
+      : "In-office visits in the same window: none recorded",
+  );
 
   if (!c.scorable) {
     lines.push("Adherence: too early to score — the plan has not been active long enough.");
@@ -136,6 +145,12 @@ function fixtureSummary(input: SummaryInput): string {
     parts.push(`${plural(flags.length, "note")} left, none flagged.`);
   } else {
     parts.push("Nothing flagged.");
+  }
+
+  if (input.visits.count > 0) {
+    parts.push(
+      `Seen in office ${plural(input.visits.count, "time")} in the same window, last on ${input.visits.lastOn}.`,
+    );
   }
 
   return parts.join(" ");

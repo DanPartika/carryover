@@ -9,6 +9,8 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
+import NotesPanel from "@/components/NotesPanel";
+import VisitMode from "@/components/VisitMode";
 
 const REGION_OPTIONS = [
   ["knee", "Knee"],
@@ -77,6 +79,7 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [dashboardKey, setDashboardKey] = useState(0);
 
   // Intake form state
   const [showIntake, setShowIntake] = useState(false);
@@ -692,16 +695,35 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
         )}
       </section>
 
+      {/* In-office quick mode (step 6): what happened in the room. */}
+      {data.episode && (
+        <VisitMode
+          episodeId={data.episode.id}
+          // Only server-persisted rows carry an id, and a visit item can only
+          // link back to one that exists — the draft editor's in-flight items
+          // have none until they're saved.
+          planItems={(activePlan?.items ?? []).filter(
+            (i): i is Item & { id: string } => typeof i.id === "string",
+          )}
+          onVisitEnded={() => setDashboardKey((n) => n + 1)}
+        />
+      )}
+
       {/* Adherence dashboard. Keyed on the active plan so approving one
-          remounts the panel — its window is measured from the approval date. */}
+          remounts the panel — its window is measured from the approval date —
+          and on a counter a finished visit bumps, so the visit count it shows
+          is never a session behind. */}
       {data.episode && (
         <AdherencePanel
-          key={activePlan?.id ?? "no-plan"}
+          key={`${activePlan?.id ?? "no-plan"}:${dashboardKey}`}
           patientId={patientId}
           clinicId={clinicId}
           patientName={name}
         />
       )}
+
+      {/* Notes, both sides (step 7). */}
+      {data.episode && <NotesPanel episodeId={data.episode.id} patientName={name} />}
     </div>
   );
 }

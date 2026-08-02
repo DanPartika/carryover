@@ -59,6 +59,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         compliance: view.compliance,
         pain: view.pain,
         flags: view.flags,
+        visits: view.visits,
       },
       jwt: user.token,
     });
