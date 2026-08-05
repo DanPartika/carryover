@@ -1,11 +1,13 @@
 // GET /api/patients/:id/overview?clinicId= — everything the PT's patient page
-// needs: identity, home-equipment inventory, open episode, latest intake, and
-// plans with items. Treatment-relationship gated.
+// needs: identity, home-equipment inventory, open episode, latest intake,
+// plans with items, and the check-in signal. Treatment-relationship gated.
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { progressionCandidates } from "@/lib/review/progressions";
+import { reviewSignals } from "@/lib/review/signals";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const pool = getPool();
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   let latestIntake = null;
   let plans: unknown[] = [];
+  let review: unknown = null;
   if (episode) {
     const { rows: intakes } = await pool.query(
       `SELECT id, condition, body_regions AS "bodyRegions", onset_date::text AS "onsetDate",
@@ -78,6 +81,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       ...p,
       items: itemRows.filter((i) => i.planId === p.id),
     }));
+
+    // The check-in signal, plus the charted steps off every item in the active
+    // plan. Both travel with the page's one load: a PT deciding whether to
+    // progress someone shouldn't watch two spinners resolve in sequence.
+    const signal = (await reviewSignals(pool, [episode.id])).get(episode.id) ?? null;
+    const activePlan = planRows.find((p) => p.status === "active");
+    const progressions = activePlan
+      ? await progressionCandidates(pool, activePlan.id, patientId, clinicId)
+      : [];
+    review = signal ? { ...signal, progressions } : null;
   }
 
   return NextResponse.json({
@@ -86,5 +99,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     episode: episode ?? null,
     latestIntake,
     plans,
+    review,
   });
 }

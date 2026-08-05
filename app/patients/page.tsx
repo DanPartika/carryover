@@ -19,6 +19,8 @@ type Row = {
   planStatus: "draft" | "active" | null;
   flagCount: number;
   lastLoggedOn: string | null;
+  reviewDue: boolean;
+  reviewLine: string;
 };
 
 const QUIET_AFTER_DAYS = 4;
@@ -64,6 +66,17 @@ function AttentionChips({ row, today }: { row: Row; today: string | null }) {
       {row.flagCount > 0 && (
         <span className="rounded-full bg-flag px-2.5 py-0.5 text-xs font-medium text-white">
           ⚑ {row.flagCount}
+        </span>
+      )}
+      {/* One chip for all four check-in triggers, never four badges. The
+          reason lives in the tooltip and in full on the patient page — a list
+          is for deciding who to open, not for reading the numbers. */}
+      {row.reviewDue && (
+        <span
+          title={row.reviewLine}
+          className="rounded-full border border-accent-deep px-2.5 py-0.5 text-xs font-medium text-accent-deep"
+        >
+          review due
         </span>
       )}
       {neverLogged && (

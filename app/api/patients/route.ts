@@ -4,6 +4,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { getPool } from "@/lib/db/pool";
+import { reviewSignals } from "@/lib/review/signals";
+
+type Row = { episodeId: string | null; reviewDue?: boolean; reviewLine?: string };
 
 export async function GET(req: NextRequest) {
   const pool = getPool();
@@ -55,6 +58,18 @@ export async function GET(req: NextRequest) {
   const {
     rows: [{ today }],
   } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+
+  // Check-in signals for every reachable patient at once. Batched rather than
+  // looped: the chip has to mean the same thing here as it does on the patient
+  // page, so it has to be the same computation, and running the per-episode
+  // loader once per row would be dozens of round trips to paint a list.
+  const episodeIds = (rows as Row[]).map((r) => r.episodeId).filter((id): id is string => !!id);
+  const signals = await reviewSignals(pool, episodeIds);
+  for (const row of rows as Row[]) {
+    const s = row.episodeId ? signals.get(row.episodeId) : undefined;
+    row.reviewDue = s?.due ?? false;
+    row.reviewLine = s?.request ? "asked for a check-in" : (s?.line ?? "");
+  }
 
   return NextResponse.json({ patients: rows, today });
 }

@@ -59,6 +59,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // The hand this patient has already raised, if any — so the button reads
+  // "your PT has been told" instead of inviting a second press.
+  let checkin: unknown = null;
+  if (episode) {
+    const { rows } = await pool.query(
+      `SELECT id, kind, note, created_at::date::text AS "on"
+       FROM checkin_requests WHERE episode_id = $1 AND resolved_at IS NULL`,
+      [episode.id],
+    );
+    checkin = rows[0] ?? null;
+  }
+
   const { rows: streakRows } = await pool.query<{ log_date: string }>(
     `SELECT DISTINCT log_date::text FROM adherence_logs
      WHERE patient_user_id = $1 AND completed AND log_date > CURRENT_DATE - $2::int
@@ -107,6 +119,7 @@ export async function GET(req: NextRequest) {
     episode: episode ?? null,
     plan,
     items,
+    checkin,
     streak,
     adhocToday,
     careOptions,

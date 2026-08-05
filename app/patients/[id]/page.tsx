@@ -11,6 +11,7 @@ import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
 import ExerciseComposer from "@/components/ExerciseComposer";
 import NotesPanel from "@/components/NotesPanel";
+import ReviewPanel, { type Review } from "@/components/ReviewPanel";
 import VisitMode from "@/components/VisitMode";
 import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
@@ -72,6 +73,7 @@ type Overview = {
   episode: { id: string; condition: string } | null;
   latestIntake: Intake | null;
   plans: Plan[];
+  review: Review | null;
 };
 
 type SearchHit = {
@@ -222,7 +224,11 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  async function draftWithAi() {
+  /** basis "progress" is the revamp: the model sees the current plan, what was
+   *  logged against it, and the pain trend. Chosen by whether there IS a plan
+   *  to revise rather than by a toggle — a draft that ignores six weeks of
+   *  evidence is never the one a PT wanted. */
+  async function draftWithAi(basis: "intake" | "progress", note = "") {
     if (!data?.episode) return;
     setBusy("draft");
     setError(null);
@@ -230,7 +236,7 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       const res = await apiFetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: data.episode.id, source: "ai-draft" }),
+        body: JSON.stringify({ episodeId: data.episode.id, source: "ai-draft", basis, note }),
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -527,13 +533,16 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       <section className="rounded-xl border border-edge bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Plan</h2>
-          {!draftItems && data.latestIntake && (
+          {/* Only the FIRST draft is offered here. Once a plan is active, the
+              next one is a check-in decision and lives in that panel, where the
+              PT can see what they're revising from. */}
+          {!draftItems && !activePlan && data.latestIntake && (
             <button
-              onClick={() => void draftWithAi()}
+              onClick={() => void draftWithAi("intake")}
               disabled={busy === "draft"}
               className="rounded-full bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
             >
-              {busy === "draft" ? "Drafting…" : activePlan ? "Draft a new plan with AI" : "✨ Draft with AI"}
+              {busy === "draft" ? "Drafting…" : "✨ Draft with AI"}
             </button>
           )}
         </div>
@@ -752,7 +761,11 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
           <div className="mt-3">
             <p className="text-xs text-muted">
               Active since {new Date(activePlan.approvedAt!).toLocaleDateString()} ·{" "}
-              {activePlan.source === "ai-draft" ? "AI-drafted, PT-approved" : "built manually"}
+              {activePlan.source === "ai-draft"
+                ? "AI-drafted, PT-approved"
+                : activePlan.source === "progression"
+                  ? "one exercise stepped along the chain at a check-in"
+                  : "built manually"}
             </p>
             <ul className="mt-2 space-y-1.5">
               {activePlan.items.map((it) => (
@@ -781,6 +794,21 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
           <p className="mt-2 text-sm text-muted">Complete an intake first, then draft a plan.</p>
         )}
       </section>
+
+      {/* Check-in (Dan's ask #2). Hidden while a draft is open: the PT is
+          already mid-revision, and a second door would mint a second draft. */}
+      {data.episode && !draftItems && (
+        <ReviewPanel
+          episodeId={data.episode.id}
+          activePlanId={activePlan?.id ?? null}
+          patientName={name}
+          review={data.review}
+          items={activePlan?.items ?? []}
+          onChanged={reload}
+          onRevamp={(note) => draftWithAi("progress", note)}
+          revamping={busy === "draft"}
+        />
+      )}
 
       {/* In-office quick mode (step 6): what happened in the room. */}
       {data.episode && (

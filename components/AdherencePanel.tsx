@@ -255,7 +255,7 @@ export default function AdherencePanel({
             )}
             <p className="mt-1.5 text-xs text-muted">
               {data.windowDays < days
-                ? `Since the plan was approved on ${shortDate(data.windowFrom)} — ${data.windowDays} days, not the full ${days}.`
+                ? `Since the plan was approved on ${shortDate(data.windowFrom)} — ${data.windowDays} day${data.windowDays === 1 ? "" : "s"}, not the full ${days}.`
                 : `Last ${days} days, since ${shortDate(data.windowFrom)}.`}{" "}
               Home work only.{" "}
               {data.visits.count > 0

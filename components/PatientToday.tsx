@@ -85,15 +85,146 @@ type Note = {
   mine: boolean;
 };
 
+type Checkin = { id: string; kind: CheckinKind; note: string | null; on: string };
+
+type CheckinKind = "too_easy" | "too_hard" | "something_changed";
+
 type PlanData = {
   episode: { id: string; condition: string } | null;
   plan: { id: string; approvedAt: string } | null;
   items: Item[];
+  checkin: Checkin | null;
   streak: StreakDay[];
   adhocToday: AdhocLog[];
   careOptions: CareOption[];
   equipment: Equipment[];
 };
+
+/** Raising a hand. The one check-in trigger the app can't compute: someone can
+ *  be at 100% adherence with pain at 2 and still be bored on a plan they've
+ *  outgrown, or be quietly halving every set because it hurts. Silence reads
+ *  identically either way.
+ *
+ *  Worded as a message to a person, not a support ticket, and it promises
+ *  nothing about what happens next — the PT decides, and might well decide
+ *  the plan stays as it is. */
+function RaiseHand({ current, onChanged }: { current: Checkin | null; onChanged: () => void }) {
+  const [kind, setKind] = useState<CheckinKind | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const OPTIONS: [CheckinKind, string][] = [
+    ["too_easy", "This feels too easy now"],
+    ["too_hard", "This is too much right now"],
+    ["something_changed", "Something's changed"],
+  ];
+
+  async function send() {
+    if (!kind) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/me/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, note }),
+      });
+      if (!res.ok) {
+        setError("couldn't send that — try again");
+        return;
+      }
+      setKind(null);
+      setNote("");
+      onChanged();
+    } catch {
+      setError("network error — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw() {
+    setBusy(true);
+    try {
+      await apiFetch("/api/me/checkin", { method: "DELETE" });
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (current) {
+    return (
+      <section className="rounded-xl border border-accent bg-card p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Check-in</h2>
+        <p className="mt-1 text-sm">
+          You told your PT:{" "}
+          <span className="font-medium">
+            {OPTIONS.find(([k]) => k === current.kind)?.[1] ?? "something's changed"}
+          </span>
+          {current.note && <span className="text-muted"> — “{current.note}”</span>}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          They&apos;ll see it next time they open your file. Keep going with your plan until they
+          say otherwise.
+        </p>
+        <button
+          onClick={() => void withdraw()}
+          disabled={busy}
+          className="mt-2 text-xs text-muted underline hover:text-flag disabled:opacity-40"
+        >
+          Never mind, take that back
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-edge bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        How is the plan itself?
+      </h2>
+      <p className="mt-1 text-xs text-muted">
+        Not about today — about the program. Tell your PT if it stops fitting.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {OPTIONS.map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setKind(kind === k ? null : k)}
+            className={`rounded-full border px-3 py-1.5 text-sm ${
+              kind === k
+                ? "border-accent-deep bg-accent-deep text-white"
+                : "border-edge text-muted hover:bg-raise"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {kind && (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Anything you want them to know (optional)"
+            className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <button
+            onClick={() => void send()}
+            disabled={busy}
+            className="rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+          >
+            {busy ? "Sending…" : "Tell my PT"}
+          </button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-sm text-flag">{error}</p>}
+    </section>
+  );
+}
 
 /** Care nobody prescribed: iced because it felt tight, put the boots on,
  *  reached for the heat pad. It reaches the PT and its pain score joins the
@@ -704,6 +835,8 @@ export default function PatientToday() {
         logged={data.adhocToday}
         onChanged={() => void load()}
       />
+
+      <RaiseHand current={data.checkin} onChanged={() => void load()} />
 
       <Journal />
     </div>
