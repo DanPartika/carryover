@@ -99,7 +99,8 @@ export async function loadAdherence(
   const windowFrom = windowStart(windowDays, today);
 
   const { rows: items } = await pool.query<StatItem>(
-    `SELECT pi.id, e.name, pi.frequency_per_week AS "frequencyPerWeek", pi.location
+    `SELECT pi.id, pi.exercise_id AS "exerciseId", e.name,
+            pi.frequency_per_week AS "frequencyPerWeek", pi.location
      FROM plan_items pi JOIN exercises e ON e.id = pi.exercise_id
      WHERE pi.plan_id = $1 ORDER BY pi.sort, e.name`,
     [plan.id],

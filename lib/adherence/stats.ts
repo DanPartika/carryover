@@ -12,6 +12,11 @@
 
 export type StatItem = {
   id: string;
+  /** The exercise behind the plan item. Carried through to ItemCompliance so
+   *  the dashboard can open this exercise's whole history — logs from before
+   *  the last plan revision point at a RETIRED plan item, so following the
+   *  plan item id would silently truncate the record at the last check-in. */
+  exerciseId: string;
   name: string;
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
@@ -26,6 +31,7 @@ export type StatLog = {
 
 export type ItemCompliance = {
   id: string;
+  exerciseId: string;
   name: string;
   frequencyPerWeek: number;
   expected: number;
@@ -111,6 +117,7 @@ export function computeCompliance(
     const lastDone = days.size ? [...days].sort().at(-1)! : null;
     return {
       id: it.id,
+      exerciseId: it.exerciseId,
       name: it.name,
       frequencyPerWeek: it.frequencyPerWeek,
       expected: expectedFor(it.frequencyPerWeek, windowDays),

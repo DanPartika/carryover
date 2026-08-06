@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dosageLine, dosageText, dosageTypeOf } from "./dosage";
+import { doneText, dosageLine, dosageText, dosageTypeOf, metPrescription } from "./dosage";
 
 const base = { sets: null, reps: null, holdSecs: null, durationMins: null, intensity: null };
 
@@ -53,5 +53,48 @@ describe("dosage line", () => {
   it("otherwise counts per week", () => {
     expect(dosageLine({ ...base, dosageType: "time", durationMins: 20, frequencyPerWeek: 3 }))
       .toBe("20 min · 3/wk");
+  });
+});
+
+describe("what they actually did", () => {
+  const nothing = { setsDone: null, repsDone: null, durationDoneMins: null };
+
+  it("mirrors the prescription's shape so the two can be read side by side", () => {
+    expect(doneText("reps", { ...nothing, setsDone: 3, repsDone: 8 })).toBe("3×8");
+    expect(doneText("time", { ...nothing, durationDoneMins: 12 })).toBe("12 min");
+  });
+
+  it("says sets for a held item, because seconds are never logged", () => {
+    // The patient's logger shows "holding 20s each" and asks only how many
+    // sets — inventing a duration here would be reporting data nobody entered.
+    expect(doneText("hold", { ...nothing, setsDone: 2 })).toBe("2 sets");
+  });
+
+  it("falls back to marked done rather than an empty string", () => {
+    expect(doneText("reps", nothing)).toBe("marked done");
+    expect(doneText("time", nothing)).toBe("marked done");
+  });
+
+  it("compares reps by volume, not sets and reps separately", () => {
+    const rx = { ...base, dosageType: "reps" as const, sets: 3, reps: 10 };
+    expect(metPrescription("reps", rx, { ...nothing, setsDone: 2, repsDone: 15 })).toBe(true);
+    expect(metPrescription("reps", rx, { ...nothing, setsDone: 3, repsDone: 8 })).toBe(false);
+  });
+
+  it("compares time by minutes and holds by sets", () => {
+    expect(
+      metPrescription("time", { ...base, dosageType: "time", durationMins: 10 }, { ...nothing, durationDoneMins: 12 }),
+    ).toBe(true);
+    expect(
+      metPrescription("hold", { ...base, dosageType: "hold", sets: 3 }, { ...nothing, setsDone: 2 }),
+    ).toBe(false);
+  });
+
+  it("refuses to judge what it cannot compare", () => {
+    // Unprescribed care has no target, and a session logged with no numbers
+    // is not a shortfall — both must read as "no comparison", never as under.
+    expect(metPrescription("reps", null, { ...nothing, setsDone: 3, repsDone: 10 })).toBeNull();
+    expect(metPrescription("reps", { ...base, dosageType: "reps", sets: 3, reps: 10 }, nothing)).toBeNull();
+    expect(metPrescription("time", { ...base, dosageType: "time" }, { ...nothing, durationDoneMins: 5 })).toBeNull();
   });
 });

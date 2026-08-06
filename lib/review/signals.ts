@@ -141,7 +141,7 @@ export async function reviewSignals(
   if (plans.length === 0) return out;
 
   const { rows: items } = await pool.query<StatItem & { planId: string }>(
-    `SELECT pi.id, pi.plan_id AS "planId", e.name,
+    `SELECT pi.id, pi.plan_id AS "planId", pi.exercise_id AS "exerciseId", e.name,
             pi.frequency_per_week AS "frequencyPerWeek", pi.location
      FROM plan_items pi JOIN exercises e ON e.id = pi.exercise_id
      WHERE pi.plan_id = ANY($1::uuid[])`,

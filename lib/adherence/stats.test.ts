@@ -10,6 +10,7 @@ import {
 } from "./stats";
 
 const item = (over: Partial<StatItem> & { id: string }): StatItem => ({
+  exerciseId: `ex-${over.id}`,
   name: over.id,
   frequencyPerWeek: 7,
   location: "home",

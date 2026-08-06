@@ -9,9 +9,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
+import SessionLog from "@/components/SessionLog";
 
 type ItemCompliance = {
   id: string;
+  exerciseId: string;
   name: string;
   frequencyPerWeek: number;
   expected: number;
@@ -144,6 +146,10 @@ export default function AdherencePanel({
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Which bar the PT clicked. Keyed on the EXERCISE, not the plan item: logs
+  // from before the last check-in point at a retired plan's item, and a
+  // history that stops at the last revision isn't the history.
+  const [focus, setFocus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -270,23 +276,34 @@ export default function AdherencePanel({
               {c.items.map((it) => {
                 const pct = it.expected > 0 ? Math.min(100, (it.completed / it.expected) * 100) : 0;
                 const cold = it.expected > 0 && it.completed < it.expected * 0.6;
+                const focused = focus === it.exerciseId;
                 return (
-                  <li key={it.id} className="flex items-center gap-3 text-sm">
-                    <span className="w-40 shrink-0 truncate" title={it.name}>
-                      {it.name}
-                    </span>
-                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-raise">
-                      <span
-                        className={`block h-full rounded-full ${cold ? "bg-flag" : "bg-accent"}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </span>
-                    <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted">
-                      {it.completed}/{it.expected}
-                    </span>
-                    <span className="hidden w-24 shrink-0 text-right text-xs text-muted sm:block">
-                      {it.lastDone ? relativeDays(it.lastDone, data.today) : "never"}
-                    </span>
+                  <li key={it.id}>
+                    {/* The bar is the click target: "22 of 25" is the summary,
+                        and the obvious next question is which 22. */}
+                    <button
+                      onClick={() => setFocus(focused ? null : it.exerciseId)}
+                      title={focused ? "Show every exercise" : `Show every ${it.name} session`}
+                      className={`flex w-full items-center gap-3 rounded-md px-1 py-0.5 text-left text-sm hover:bg-raise/60 ${
+                        focused ? "bg-raise" : ""
+                      }`}
+                    >
+                      <span className="w-40 shrink-0 truncate" title={it.name}>
+                        {it.name}
+                      </span>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-raise">
+                        <span
+                          className={`block h-full rounded-full ${cold ? "bg-flag" : "bg-accent"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </span>
+                      <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted">
+                        {it.completed}/{it.expected}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right text-xs text-muted sm:block">
+                        {it.lastDone ? relativeDays(it.lastDone, data.today) : "never"}
+                      </span>
+                    </button>
                   </li>
                 );
               })}
@@ -333,6 +350,15 @@ export default function AdherencePanel({
               </>
             )}
           </div>
+
+          {/* The sessions behind the numbers above. */}
+          <SessionLog
+            patientId={patientId}
+            clinicId={clinicId}
+            days={days}
+            focusExerciseId={focus}
+            onClearFocus={() => setFocus(null)}
+          />
 
           {/* Flags + notes */}
           <div>
