@@ -5,46 +5,17 @@
 // their real home surface (reachable from the nav either way).
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
+import { useBootstrap, type Bootstrap } from "@/components/Bootstrap";
 import PatientToday from "@/components/PatientToday";
 
-type Membership = { clinicId: string; clinicName: string; role: string };
-type Bootstrap = {
-  user: {
-    id: string;
-    litheUserId: string;
-    email: string;
-    displayName: string;
-    isAppAdmin: boolean;
-  };
-  memberships: Membership[];
-};
-
 export default function Home() {
-  const { enabled, loading, session } = useAuth();
-  const [boot, setBoot] = useState<Bootstrap | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Bumped when the setup guide changes membership, so the guide re-reads its
-  // own preconditions instead of showing a step the PT has already finished.
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    if (loading) return;
-    if (enabled && !session) return; // RequireAuth shows the login screen
-    let alive = true;
-    apiFetch("/api/bootstrap", { method: "POST" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`bootstrap ${res.status}`);
-        return (await res.json()) as Bootstrap;
-      })
-      .then((b) => alive && setBoot(b))
-      .catch((e) => alive && setError((e as Error).message));
-    return () => {
-      alive = false;
-    };
-  }, [enabled, loading, session, reloadKey]);
+  const { enabled } = useAuth();
+  // Shared with the nav — one fetch per page load, and "refresh" re-reads the
+  // setup guide's preconditions after it changes membership.
+  const { boot, error, refresh } = useBootstrap();
 
   if (boot?.memberships.some((m) => m.role === "patient")) {
     return <PatientToday />;
@@ -84,7 +55,7 @@ export default function Home() {
       ) : !boot ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : (
-        <SetupGuide boot={boot} onChanged={() => setReloadKey((n) => n + 1)} />
+        <SetupGuide boot={boot} onChanged={refresh} />
       )}
     </div>
   );

@@ -6,10 +6,11 @@
 // (built in step 3, unpopulated until now). Phone-first — large tap targets,
 // no PT-facing controls.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { GoalCheck, type GoalRow } from "@/components/Goals";
 import PatientIntake from "@/components/PatientIntake";
+import { withBase } from "@/lib/config/basePath";
 import { dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
 type Item = {
@@ -370,29 +371,49 @@ function CareLogger({
   );
 }
 
-/** The patient's journal: what they write for their PT, plus whatever the PT
- *  chose to share back. Everything here is two-way visible by construction —
- *  the API never sends a private PT note to this side. */
-function Journal() {
-  const [notes, setNotes] = useState<Note[] | null>(null);
+/** What the PT chose to share, surfaced first — a patient opening the app
+ *  should meet their clinician's words before their homework. Only shared
+ *  notes ever reach this side (filtered in SQL, not here). */
+function PtMessages({ notes }: { notes: Note[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const fromPt = notes.filter((n) => n.authorRole === "pt");
+  if (fromPt.length === 0) return null;
+  const visible = showAll ? fromPt : fromPt.slice(0, 3);
+
+  return (
+    <section className="rounded-xl border border-[var(--color-clinic)]/40 bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">From your PT</h2>
+      <ul className="mt-2 space-y-2">
+        {visible.map((n) => (
+          <li key={n.id} className="rounded-lg bg-[var(--color-clinic)]/10 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+              <span className="font-medium text-ink">{n.authorName ?? "Your PT"}</span>
+              <span>{new Date(n.createdAt).toLocaleDateString()}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
+          </li>
+        ))}
+      </ul>
+      {fromPt.length > 3 && (
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 text-xs text-muted underline hover:text-ink"
+        >
+          {showAll ? "Show fewer" : `Show all ${fromPt.length}`}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** The patient's journal: what they write for their PT. The PT's side of the
+ *  conversation lives at the top of the page now, so this list is the
+ *  patient's own entries only. */
+function Journal({ notes, onChanged }: { notes: Note[]; onChanged: () => void }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/me/notes");
-      if (res.ok) setNotes(((await res.json()) as { notes: Note[] }).notes);
-    } catch {
-      setError("couldn't load your journal");
-    }
-  }, []);
-
-  useEffect(() => {
-    // setState runs inside load() after an await, not in the effect body.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+  const mine = notes.filter((n) => n.authorRole === "patient");
 
   async function add() {
     const body = draft.trim();
@@ -410,7 +431,7 @@ function Journal() {
         return;
       }
       setDraft("");
-      await load();
+      onChanged();
     } catch {
       setError("network error — try again");
     } finally {
@@ -422,7 +443,7 @@ function Journal() {
     <section className="rounded-xl border border-edge bg-card p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Journal</h2>
       <p className="mt-1 text-xs text-muted">
-        Anything you write here goes to your PT. They can reply by sharing a note back.
+        Anything you write here goes to your PT. Their replies show up at the top of this page.
       </p>
       <textarea
         value={draft}
@@ -440,23 +461,152 @@ function Journal() {
       </button>
       {error && <p className="mt-2 text-sm text-flag">{error}</p>}
       <ul className="mt-3 space-y-2">
-        {notes?.map((n) => (
-          <li
-            key={n.id}
-            className={`rounded-lg px-3 py-2 text-sm ${
-              n.authorRole === "pt" ? "bg-[var(--color-clinic)]/10" : "bg-raise/60"
-            }`}
-          >
+        {mine.map((n) => (
+          <li key={n.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
             <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
-              <span className="font-medium text-ink">
-                {n.authorRole === "pt" ? `From ${n.authorName ?? "your PT"}` : "You"}
-              </span>
+              <span className="font-medium text-ink">You</span>
               <span>{new Date(n.createdAt).toLocaleDateString()}</span>
             </div>
             <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** Subscribe-from-URL calendar sync (the plants-app pattern). The link holds a
+ *  capability token — Google polls it without auth, so the secret IS the URL,
+ *  which is why the card talks about it like a password. undefined = still
+ *  loading, null = feed off. */
+function CalendarSync() {
+  const [token, setToken] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    apiFetch("/api/me/calendar-token")
+      .then(async (res) =>
+        res.ok ? ((await res.json()) as { token: string | null }).token : null,
+      )
+      .then((t) => alive && setToken(t))
+      .catch(() => alive && setToken(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Safe against SSR: token starts undefined, so this line only ever runs in
+  // the browser after the effect has resolved.
+  const url = token ? `${window.location.origin}${withBase(`/api/calendar/${token}`)}` : null;
+
+  async function mint() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/me/calendar-token", { method: "POST" });
+      if (!res.ok) {
+        setError("couldn't create the link — try again");
+        return;
+      }
+      setToken(((await res.json()) as { token: string }).token);
+      setCopied(false);
+    } catch {
+      setError("network error — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function turnOff() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch("/api/me/calendar-token", { method: "DELETE" });
+      setToken(null);
+      setCopied(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      // Clipboard can be denied — the input is selectable either way.
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-edge bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        On your calendar
+      </h2>
+      {token === undefined ? (
+        <p className="mt-1 text-xs text-muted">Loading…</p>
+      ) : token === null ? (
+        <>
+          <p className="mt-1 text-xs text-muted">
+            See your program on Google Calendar (or Apple, Outlook): one all-day entry each
+            day listing your exercises, updated when your PT changes the plan.
+          </p>
+          <button
+            onClick={() => void mint()}
+            disabled={busy}
+            className="mt-2 rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+          >
+            {busy ? "Creating…" : "Create my calendar link"}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-muted">
+            In Google Calendar: <span className="font-medium text-ink">Settings → Add
+            calendar → From URL</span>, then paste this link. Google refreshes it on its own
+            schedule — usually within a few hours.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <input
+              readOnly
+              value={url ?? ""}
+              onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-lg border border-edge bg-raise/60 px-3 py-2 font-mono text-xs outline-none"
+            />
+            <button
+              onClick={() => void copy()}
+              className="rounded-lg border border-edge px-3 py-2 text-sm font-medium hover:bg-raise"
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            This link is yours alone — anyone holding it can read your exercise list, so
+            treat it like a password.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <button
+              onClick={() => void mint()}
+              disabled={busy}
+              className="text-muted underline hover:text-ink disabled:opacity-40"
+            >
+              Get a new link (the old one stops working)
+            </button>
+            <button
+              onClick={() => void turnOff()}
+              disabled={busy}
+              className="text-muted underline hover:text-flag disabled:opacity-40"
+            >
+              Turn off
+            </button>
+          </div>
+        </>
+      )}
+      {error && <p className="mt-2 text-sm text-flag">{error}</p>}
     </section>
   );
 }
@@ -547,6 +697,10 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
         setError("couldn't save — try again");
         return;
       }
+      // Close the card so the save visibly DID something: the tile collapses
+      // and the ✓ chip is what's left. Leaving the form open read as "nothing
+      // happened".
+      setOpen(false);
       onLogged();
     } catch {
       setError("network error — try again");
@@ -556,7 +710,11 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
   }
 
   return (
-    <li className="rounded-xl border border-edge bg-card p-4">
+    <li
+      className={`rounded-xl border p-4 ${
+        logged ? "border-accent-deep/50 bg-accent-deep/5" : "border-edge bg-card"
+      }`}
+    >
       <div className="flex items-start gap-3">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-raise">
           {item.image ? (
@@ -571,7 +729,7 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold">{item.name}</span>
-            {logged && !open && (
+            {logged && (
               <span className="shrink-0 rounded-full bg-accent-deep px-2 py-0.5 text-xs font-medium text-white">
                 ✓ logged
               </span>
@@ -700,23 +858,26 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
 export default function PatientToday() {
   const [data, setData] = useState<PlanData | null>(null);
   const [visits, setVisits] = useState<Visit[] | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"home" | "office">("home");
 
   async function load() {
     try {
-      const [planRes, visitRes] = await Promise.all([
+      const [planRes, visitRes, notesRes] = await Promise.all([
         apiFetch("/api/me/plan"),
         apiFetch("/api/me/visits"),
+        apiFetch("/api/me/notes"),
       ]);
       if (!planRes.ok) {
         setError(`load failed (${planRes.status})`);
         return;
       }
       setData((await planRes.json()) as PlanData);
-      // A failed visit fetch shouldn't blank the Today view — home exercises
-      // are the reason the patient opened the app.
+      // A failed visit or notes fetch shouldn't blank the Today view — home
+      // exercises are the reason the patient opened the app.
       if (visitRes.ok) setVisits(((await visitRes.json()) as { visits: Visit[] }).visits);
+      if (notesRes.ok) setNotes(((await notesRes.json()) as { notes: Note[] }).notes);
     } catch {
       setError("network error — pull to refresh");
     }
@@ -751,6 +912,7 @@ export default function PatientToday() {
     // shapes the first AI draft, and the journal still reaches the PT.
     return (
       <div className="space-y-5">
+        <PtMessages notes={notes} />
         <div className="rounded-xl border border-edge bg-card p-6 text-center">
           <p className="font-semibold">No active plan yet</p>
           <p className="mt-1 text-sm text-muted">
@@ -759,7 +921,8 @@ export default function PatientToday() {
         </div>
         <PatientIntake />
         <EquipmentShelf equipment={data.equipment} onToggle={(id, o) => void toggleEquipment(id, o)} />
-        <Journal />
+        <Journal notes={notes} onChanged={() => void load()} />
+        <CalendarSync />
       </div>
     );
   }
@@ -771,6 +934,7 @@ export default function PatientToday() {
   const afterItems = homeItems.filter((i) => i.careTiming === "after");
   const mainItems = homeItems.filter((i) => i.careTiming === null);
   const streakCount = currentStreakCount(data.streak);
+  const doneCount = homeItems.filter((i) => i.logId !== null).length;
 
   return (
     <div className="space-y-5">
@@ -794,6 +958,8 @@ export default function PatientToday() {
         </div>
       </section>
 
+      <PtMessages notes={notes} />
+
       <div className="flex gap-1 rounded-lg bg-raise p-1">
         <button
           onClick={() => setTab("home")}
@@ -814,6 +980,15 @@ export default function PatientToday() {
           <p className="text-sm text-muted">No home exercises assigned yet.</p>
         ) : (
           <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted" aria-live="polite">
+              {doneCount === homeItems.length ? (
+                <span className="text-accent-deep">
+                  ✓ All {homeItems.length} logged today — done for the day
+                </span>
+              ) : (
+                `${doneCount} of ${homeItems.length} logged today`
+              )}
+            </p>
             {beforeItems.length > 0 && (
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
@@ -942,7 +1117,9 @@ export default function PatientToday() {
 
       <RaiseHand current={data.checkin} onChanged={() => void load()} />
 
-      <Journal />
+      <Journal notes={notes} onChanged={() => void load()} />
+
+      <CalendarSync />
     </div>
   );
 }
