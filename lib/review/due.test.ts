@@ -37,6 +37,7 @@ const input = (over: Partial<ReviewInput> = {}): ReviewInput => ({
   compliance: compliance(),
   pain: pain(),
   request: null,
+  visitsSinceReview: 0,
   ...over,
 });
 
@@ -171,6 +172,30 @@ describe("data triggers", () => {
     );
     expect(s.codes).not.toContain("struggling");
     expect(s.due).toBe(false);
+  });
+});
+
+describe("visit-count trigger", () => {
+  // Dan's "every 3 visits" instinct, as a fifth reason on the same chip.
+  const quiet = {
+    planApprovedOn: "2026-07-30", // 7 days in: time + data triggers all quiet
+    compliance: compliance({ scorable: false, expected: 0, completed: 0, percent: null }),
+    pain: pain({ points: [], start: null, end: null, direction: null }),
+  };
+
+  it("fires at 3 office visits since the last decision, however young the plan", () => {
+    const s = computeReviewSignal(input({ ...quiet, visitsSinceReview: 3 }));
+    expect(s.codes).toEqual(["visits"]);
+    expect(computeReviewSignal(input({ ...quiet, visitsSinceReview: 2 })).due).toBe(false);
+  });
+
+  it("puts the count in the reason line, as a measurement", () => {
+    const s = computeReviewSignal(input({ ...quiet, visitsSinceReview: 4 }));
+    expect(s.line).toContain("4 visits since last review");
+  });
+
+  it("stays out of the line when it isn't the trigger", () => {
+    expect(computeReviewSignal(input({ visitsSinceReview: 2 })).line).not.toContain("visits");
   });
 });
 

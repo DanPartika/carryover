@@ -12,11 +12,14 @@
 // find yourself wanting to put "ready to progress" in that string, don't: which
 // door to walk through is the PT's call.
 //
-// Four triggers, composing into ONE chip rather than four badges:
+// Five triggers, composing into ONE chip rather than five badges:
 //   time        — the plan has simply been running a while
 //   steady      — doing the work, pain settled
 //   struggling  — not doing the work, or pain climbing
 //   requested   — the patient raised a hand
+//   visits      — three office visits since the last decision (Dan's "every
+//                 3 visits" instinct — real clinics report on a visit count;
+//                 Medicare's floor is every 10th treatment day)
 
 import { daysBetween, type Compliance, type PainTrend } from "@/lib/adherence/stats";
 
@@ -35,8 +38,18 @@ export const SETTLED_PAIN = 4;
  *  chance to happen. Seven days is the shortest window the dashboard itself
  *  offers, so it's the shortest one worth quoting. */
 export const MIN_SCORABLE_DAYS = 7;
+/** Office visits since the last decision that add up to "worth a look". */
+export const VISITS_SINCE_REVIEW = 3;
 
-export type ReviewCode = "time" | "steady" | "struggling" | "requested";
+export type ReviewCode = "time" | "steady" | "struggling" | "requested" | "visits";
+
+/** The clock runs from the last DECISION, not from the plan. One rule, used
+ *  by the signal AND by whoever counts things "since the last review" —
+ *  duplicating the comparison is how the chip and its own reason line end up
+ *  counting from different days. */
+export function reviewClockFrom(planApprovedOn: string, lastReviewOn: string | null): string {
+  return lastReviewOn && lastReviewOn > planApprovedOn ? lastReviewOn : planApprovedOn;
+}
 
 export type CheckinRequest = {
   kind: "too_easy" | "too_hard" | "something_changed";
@@ -54,6 +67,8 @@ export type ReviewInput = {
   compliance: Compliance;
   pain: PainTrend;
   request: CheckinRequest | null;
+  /** Completed office visits dated after the last decision. */
+  visitsSinceReview: number;
 };
 
 export type ReviewSignal = {
@@ -91,6 +106,9 @@ export function reasonLine(input: ReviewInput, daysOnPlan: number): string {
   } else {
     parts.push("no pain scores");
   }
+  if (input.visitsSinceReview >= VISITS_SINCE_REVIEW) {
+    parts.push(`${input.visitsSinceReview} visits since last review`);
+  }
   return parts.join(" · ");
 }
 
@@ -113,12 +131,9 @@ export function computeReviewSignal(input: ReviewInput): ReviewSignal {
   // "25 days, not the full 28" reads as an off-by-one bug even though both
   // conventions were defensible. The scoring window's convention wins.
   const daysOnPlan = daysBetween(planApprovedOn, today) + 1;
-  // The clock runs from the last DECISION, not from the plan, and counts
-  // elapsed days. A PT who looked yesterday and chose to change nothing should
-  // not be told again today.
-  const clockFrom =
-    lastReviewOn && lastReviewOn > planApprovedOn ? lastReviewOn : planApprovedOn;
-  const daysSinceReview = daysBetween(clockFrom, today);
+  // Elapsed days since the last decision. A PT who looked yesterday and chose
+  // to change nothing should not be told again today.
+  const daysSinceReview = daysBetween(reviewClockFrom(planApprovedOn, lastReviewOn), today);
 
   const codes: ReviewCode[] = [];
 
@@ -127,6 +142,10 @@ export function computeReviewSignal(input: ReviewInput): ReviewSignal {
   if (request) codes.push("requested");
 
   if (daysSinceReview >= REVIEW_AFTER_DAYS) codes.push("time");
+
+  // Visit-count cadence, independent of the calendar: someone seen twice a
+  // week accumulates history faster than the 21-day clock notices.
+  if (input.visitsSinceReview >= VISITS_SINCE_REVIEW) codes.push("visits");
 
   if (daysSinceReview >= DATA_TRIGGER_MIN_DAYS) {
     const adherence = c.scorable ? (c.percent ?? 0) : null;

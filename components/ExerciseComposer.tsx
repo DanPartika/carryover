@@ -31,27 +31,13 @@ const REGIONS = [
   ["full_body", "Full body"],
 ] as const;
 
-const EQUIPMENT = [
-  ["none", "No equipment"],
-  ["resistance-band", "Resistance band"],
-  ["chair", "Chair"],
-  ["wall", "Wall"],
-  ["step", "Step / stair"],
-  ["towel", "Towel / strap"],
-  ["ankle-weights", "Ankle weights"],
-  ["foam-roller", "Foam roller"],
-  ["exercise-ball", "Exercise ball"],
-  ["balance-pad", "Balance pad / BOSU"],
-  ["stationary-bike", "Stationary bike"],
-  ["dumbbell", "Dumbbell"],
-  ["other", "Other"],
-] as const;
-
 const DOSAGE: [DosageType, string, string][] = [
   ["reps", "Sets & reps", "3 × 10"],
   ["hold", "Timed hold", "3 × 20s"],
   ["time", "For time", "10 min at level 2"],
 ];
+
+type CatalogEntry = { id: string; slug: string; name: string; kind: string };
 
 export default function ExerciseComposer({
   initialName = "",
@@ -62,23 +48,39 @@ export default function ExerciseComposer({
   initialName?: string;
   /** Omit to let the composer resolve the PT's clinic itself (library page). */
   clinicId?: string;
-  onCreated: (created: { id: string; name: string; dosageType: DosageType }) => void;
+  onCreated: (created: {
+    id: string;
+    name: string;
+    dosageType: DosageType;
+    kind: "exercise" | "modality";
+  }) => void;
   onCancel: () => void;
 }) {
   const [clinic, setClinic] = useState<{ id: string; name: string } | null>(
     clinicId ? { id: clinicId, name: "" } : null,
   );
   const [name, setName] = useState(initialName);
+  const [kind, setKind] = useState<"exercise" | "modality">("exercise");
   const [regions, setRegions] = useState<string[]>([]);
   const [dosageType, setDosageType] = useState<DosageType>("reps");
   const [difficulty, setDifficulty] = useState(2);
   const [equipment, setEquipment] = useState<string[]>(["none"]);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [steps, setSteps] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // The full catalog, not a hardcoded subset — the old list silently
+    // omitted eleven slugs, so half the inventory couldn't gate anything.
+    void (async () => {
+      const res = await apiFetch("/api/equipment");
+      if (res.ok) {
+        const d = (await res.json()) as { catalog: CatalogEntry[] };
+        setCatalog(d.catalog);
+      }
+    })();
     if (clinicId) return;
     void (async () => {
       const res = await apiFetch("/api/bootstrap", { method: "POST" });
@@ -104,8 +106,11 @@ export default function ExerciseComposer({
         body: JSON.stringify({
           clinicId: clinic.id,
           name,
+          kind,
           bodyRegions: regions,
-          dosageType,
+          // Care is always for-time — the seeded six all are, and a rep-dosed
+          // ice pack is a question nobody should be asked to log.
+          dosageType: kind === "modality" ? "time" : dosageType,
           difficulty,
           equipmentSlugs: equipment,
           videoUrl: videoUrl || null,
@@ -121,7 +126,12 @@ export default function ExerciseComposer({
         return;
       }
       const d = (await res.json()) as { id: string };
-      onCreated({ id: d.id, name: name.trim(), dosageType });
+      onCreated({
+        id: d.id,
+        name: name.trim(),
+        dosageType: kind === "modality" ? "time" : dosageType,
+        kind,
+      });
     } catch {
       setError("network error — try again");
     } finally {
@@ -154,12 +164,29 @@ export default function ExerciseComposer({
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Name (e.g. Wall slide with ball squeeze)"
+        placeholder={
+          kind === "modality"
+            ? "Name (e.g. Contrast bath)"
+            : "Name (e.g. Wall slide with ball squeeze)"
+        }
         className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
       />
 
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => setKind("exercise")} className={chip(kind === "exercise")}>
+          Exercise
+        </button>
+        <button onClick={() => setKind("modality")} className={chip(kind === "modality")}>
+          Care (ice, heat, massage…)
+        </button>
+      </div>
+
       <div>
-        <p className="text-xs text-muted">Body region — the AI only offers an exercise to matching intakes</p>
+        <p className="text-xs text-muted">
+          {kind === "modality"
+            ? "Body region — optional for care (you ice whatever hurts)"
+            : "Body region — the AI only offers an exercise to matching intakes"}
+        </p>
         <div className="mt-1 flex flex-wrap gap-1.5">
           {REGIONS.map(([v, label]) => (
             <button
@@ -173,32 +200,34 @@ export default function ExerciseComposer({
         </div>
       </div>
 
-      <div>
-        <p className="text-xs text-muted">How is it dosed?</p>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {DOSAGE.map(([v, label, example]) => (
-            <button
-              key={v}
-              onClick={() => setDosageType(v)}
-              className={chip(dosageType === v)}
-              title={example}
-            >
-              {label}
-            </button>
-          ))}
+      {kind === "exercise" && (
+        <div>
+          <p className="text-xs text-muted">How is it dosed?</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {DOSAGE.map(([v, label, example]) => (
+              <button
+                key={v}
+                onClick={() => setDosageType(v)}
+                className={chip(dosageType === v)}
+                title={example}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <p className="text-xs text-muted">Equipment needed</p>
         <div className="mt-1 flex flex-wrap gap-1.5">
-          {EQUIPMENT.map(([v, label]) => (
+          {catalog.map((c) => (
             <button
-              key={v}
-              onClick={() => toggle(equipment, v, setEquipment)}
-              className={chip(equipment.includes(v))}
+              key={c.slug}
+              onClick={() => toggle(equipment, c.slug, setEquipment)}
+              className={chip(equipment.includes(c.slug))}
             >
-              {label}
+              {c.name}
             </button>
           ))}
         </div>
@@ -233,7 +262,7 @@ export default function ExerciseComposer({
       <div className="flex gap-2">
         <button
           onClick={() => void save()}
-          disabled={busy || !name.trim() || regions.length === 0}
+          disabled={busy || !name.trim() || (kind === "exercise" && regions.length === 0)}
           className="rounded-lg bg-accent-deep px-4 py-2 font-semibold text-white hover:brightness-110 disabled:opacity-40"
         >
           {busy ? "Saving…" : "Add to library"}

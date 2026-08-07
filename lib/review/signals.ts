@@ -20,7 +20,13 @@ import {
   type StatItem,
   type StatLog,
 } from "@/lib/adherence/stats";
-import { computeReviewSignal, type CheckinRequest, type ReviewSignal } from "./due";
+import type { LimitedActivity } from "@/lib/intake/fields";
+import {
+  computeReviewSignal,
+  reviewClockFrom,
+  type CheckinRequest,
+  type ReviewSignal,
+} from "./due";
 
 export const REVIEW_WINDOW_DAYS = 28;
 
@@ -28,6 +34,17 @@ export type EpisodeReview = ReviewSignal & {
   episodeId: string;
   planId: string | null;
   windowDays: number;
+};
+
+/** One intake goal beside where it stands now — the row a progress report is
+ *  made of ("stairs: 4/10 at intake → 7/10 last week"). `current` is the
+ *  newest re-rate, matched by activity text; null until someone re-rates. */
+export type GoalProgressRow = {
+  activity: string;
+  baseline: number;
+  baselineOn: string;
+  current: number | null;
+  currentOn: string | null;
 };
 
 /** The numbers behind a decision, frozen into plan_reviews.context — logs stay
@@ -42,6 +59,9 @@ export type ReviewContext = {
   painEnd: number | null;
   painDirection: string | null;
   triggers: string[];
+  /** Goal-by-goal standing at the moment of the decision — the content rule
+   *  real progress reports live by: each goal, a number beside a number. */
+  goals: GoalProgressRow[] | null;
 };
 
 export function reviewContext(r: EpisodeReviewFull | undefined): ReviewContext | null {
@@ -56,6 +76,7 @@ export function reviewContext(r: EpisodeReviewFull | undefined): ReviewContext |
     painEnd: r.painEnd,
     painDirection: r.painDirection,
     triggers: r.codes,
+    goals: r.goals,
   };
 }
 
@@ -67,6 +88,7 @@ type Numbers = {
   painStart: number | null;
   painEnd: number | null;
   painDirection: string | null;
+  goals: GoalProgressRow[] | null;
 };
 
 export type EpisodeReviewFull = EpisodeReview & Numbers;
@@ -111,6 +133,67 @@ export async function reviewSignals(
   );
   const openRequest = new Map(requests.map((r) => [r.episodeId, r]));
 
+  // Completed office visits, dated — counted against each episode's own
+  // review clock below (the "every 3 visits" trigger).
+  const { rows: visitRows } = await pool.query<{ episodeId: string; on: string }>(
+    `SELECT episode_id AS "episodeId", started_at::date::text AS "on"
+     FROM visits WHERE episode_id = ANY($1::uuid[]) AND ended_at IS NOT NULL`,
+    [episodeIds],
+  );
+  const visitsByEpisode = new Map<string, string[]>();
+  for (const v of visitRows) {
+    const list = visitsByEpisode.get(v.episodeId);
+    if (list) list.push(v.on);
+    else visitsByEpisode.set(v.episodeId, [v.on]);
+  }
+
+  // The goals: the newest intake that carries limited_activities is the
+  // baseline; the newest goal_ratings row is where they stand. Matched by
+  // activity TEXT, not index — a superseding intake that reorders its three
+  // activities must not silently shift the comparison.
+  const { rows: goalBase } = await pool.query<{
+    episodeId: string;
+    activities: LimitedActivity[];
+    on: string;
+  }>(
+    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
+            limited_activities AS activities, created_at::date::text AS "on"
+     FROM intakes
+     WHERE episode_id = ANY($1::uuid[]) AND limited_activities IS NOT NULL
+     ORDER BY episode_id, created_at DESC`,
+    [episodeIds],
+  );
+  const { rows: goalLatest } = await pool.query<{
+    episodeId: string;
+    ratings: LimitedActivity[];
+    on: string;
+  }>(
+    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
+            ratings, created_at::date::text AS "on"
+     FROM goal_ratings WHERE episode_id = ANY($1::uuid[])
+     ORDER BY episode_id, created_at DESC`,
+    [episodeIds],
+  );
+  const latestRatings = new Map(goalLatest.map((g) => [g.episodeId, g]));
+  const goalsByEpisode = new Map<string, GoalProgressRow[]>();
+  for (const base of goalBase) {
+    const latest = latestRatings.get(base.episodeId);
+    const key = (s: string) => s.trim().toLowerCase();
+    goalsByEpisode.set(
+      base.episodeId,
+      base.activities.map((a) => {
+        const match = latest?.ratings.find((r) => key(r.activity) === key(a.activity));
+        return {
+          activity: a.activity,
+          baseline: a.rating,
+          baselineOn: base.on,
+          current: match?.rating ?? null,
+          currentOn: match ? latest!.on : null,
+        };
+      }),
+    );
+  }
+
   // Episodes with no active plan still get a row: a raised hand on a patient
   // between plans is exactly when a PT most needs to hear it.
   for (const episodeId of episodeIds) {
@@ -122,6 +205,7 @@ export async function reviewSignals(
       compliance: { scorable: false, expected: 0, completed: 0, percent: null, items: [] },
       pain: { points: [], start: null, end: null, direction: null },
       request: openRequest.get(episodeId) ?? null,
+      visitsSinceReview: 0,
     });
     out.set(episodeId, {
       ...signal,
@@ -136,6 +220,7 @@ export async function reviewSignals(
       painStart: null,
       painEnd: null,
       painDirection: null,
+      goals: goalsByEpisode.get(episodeId) ?? null,
     });
   }
   if (plans.length === 0) return out;
@@ -170,6 +255,12 @@ export async function reviewSignals(
 
     const compliance = computeCompliance(planItems, planLogs, windowDays);
     const pain = computePainTrend(planLogs);
+    // Strictly after the decision day: a visit on the morning of a review was
+    // part of what that review already saw.
+    const clockFrom = reviewClockFrom(plan.approvedOn, lastReview.get(plan.episodeId) ?? null);
+    const visitsSinceReview = (visitsByEpisode.get(plan.episodeId) ?? []).filter(
+      (on) => on > clockFrom,
+    ).length;
     const signal = computeReviewSignal({
       today,
       planApprovedOn: plan.approvedOn,
@@ -178,6 +269,7 @@ export async function reviewSignals(
       compliance,
       pain,
       request: openRequest.get(plan.episodeId) ?? null,
+      visitsSinceReview,
     });
 
     out.set(plan.episodeId, {
@@ -191,6 +283,7 @@ export async function reviewSignals(
       painStart: pain.start,
       painEnd: pain.end,
       painDirection: pain.direction,
+      goals: goalsByEpisode.get(plan.episodeId) ?? null,
     });
   }
 

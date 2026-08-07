@@ -64,23 +64,14 @@ const REGIONS = [
   ["full_body", "Full body"],
 ] as const;
 
-const EQUIPMENT = [
-  ["", "Any equipment"],
-  ["none", "No equipment"],
-  ["resistance-band", "Resistance band"],
-  ["chair", "Chair"],
-  ["wall", "Wall"],
-  ["step", "Step / stair"],
-  ["towel", "Towel / strap"],
-  ["ankle-weights", "Ankle weights"],
-  ["dumbbell", "Dumbbell"],
-  ["barbell", "Barbell"],
-  ["kettlebell", "Kettlebell"],
-  ["cable-machine", "Cable machine"],
-  ["machine", "Gym machine"],
-  ["exercise-ball", "Exercise ball"],
-  ["medicine-ball", "Medicine ball"],
-  ["foam-roller", "Foam roller"],
+const POSITIONS = [
+  ["", "Any position"],
+  ["standing", "Standing"],
+  ["seated", "Seated"],
+  ["supine", "Lying (back)"],
+  ["prone", "Lying (front)"],
+  ["side_lying", "Side-lying"],
+  ["quadruped", "Hands & knees"],
 ] as const;
 
 const PAGE = 30;
@@ -105,8 +96,13 @@ export default function LibraryPage() {
   const [region, setRegion] = useState("");
   const [equipment, setEquipment] = useState("");
   const [difficulty, setDifficulty] = useState("");
+  const [position, setPosition] = useState("");
+  const [kind, setKind] = useState<"exercise" | "modality" | "any">("exercise");
   const [kneeCoreOnly, setKneeCoreOnly] = useState(false);
   const [includeGym, setIncludeGym] = useState(false);
+  // Full catalog for the equipment filter — the old hardcoded list silently
+  // omitted eleven slugs (all the modality gear among them).
+  const [catalog, setCatalog] = useState<{ slug: string; name: string }[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -127,6 +123,8 @@ export default function LibraryPage() {
       if (region) params.set("region", region);
       if (equipment) params.set("equipment", equipment);
       if (difficulty) params.set("difficulty", difficulty);
+      if (position) params.set("position", position);
+      if (kind !== "exercise") params.set("kind", kind);
       if (kneeCoreOnly) params.set("source", "carryover");
       if (includeGym) params.set("tier", "all");
       try {
@@ -142,7 +140,7 @@ export default function LibraryPage() {
         setBusy(false);
       }
     },
-    [q, region, equipment, difficulty, kneeCoreOnly, includeGym],
+    [q, region, equipment, difficulty, position, kind, kneeCoreOnly, includeGym],
   );
 
   useEffect(() => {
@@ -153,6 +151,17 @@ export default function LibraryPage() {
       if (debounce.current) clearTimeout(debounce.current);
     };
   }, [authReady, load, q]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    void (async () => {
+      const res = await apiFetch("/api/equipment");
+      if (res.ok) {
+        const d = (await res.json()) as { catalog: { slug: string; name: string }[] };
+        setCatalog(d.catalog);
+      }
+    })();
+  }, [authReady]);
 
   async function openDetail(id: string) {
     const res = await apiFetch(`/api/exercises/${id}`);
@@ -246,11 +255,32 @@ export default function LibraryPage() {
           ))}
         </select>
         <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+          className="rounded-lg border border-edge bg-card px-2 py-2 text-sm"
+        >
+          <option value="exercise">Exercises</option>
+          <option value="modality">Care (ice, heat…)</option>
+          <option value="any">Everything</option>
+        </select>
+        <select
           value={equipment}
           onChange={(e) => setEquipment(e.target.value)}
           className="rounded-lg border border-edge bg-card px-2 py-2 text-sm"
         >
-          {EQUIPMENT.map(([v, label]) => (
+          <option value="">Any equipment</option>
+          {catalog.map((c) => (
+            <option key={c.slug} value={c.slug}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={position}
+          onChange={(e) => setPosition(e.target.value)}
+          className="rounded-lg border border-edge bg-card px-2 py-2 text-sm"
+        >
+          {POSITIONS.map(([v, label]) => (
             <option key={v} value={v}>
               {label}
             </option>

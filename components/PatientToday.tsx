@@ -8,6 +8,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
+import { GoalCheck, type GoalRow } from "@/components/Goals";
+import PatientIntake from "@/components/PatientIntake";
 import { dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 
 type Item = {
@@ -27,6 +29,7 @@ type Item = {
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
   rationale: string | null;
+  careTiming: "before" | "after" | null;
   logId: string | null;
   logCompleted: boolean | null;
   logSetsDone: number | null;
@@ -91,9 +94,14 @@ type CheckinKind = "too_easy" | "too_hard" | "something_changed";
 
 type PlanData = {
   episode: { id: string; condition: string } | null;
-  plan: { id: string; approvedAt: string } | null;
+  plan: {
+    id: string;
+    approvedAt: string;
+    equipmentSuggestions: { slug: string; name: string; reason: string }[];
+  } | null;
   items: Item[];
   checkin: Checkin | null;
+  goals: { rows: GoalRow[]; promptDue: boolean } | null;
   streak: StreakDay[];
   adhocToday: AdhocLog[];
   careOptions: CareOption[];
@@ -453,6 +461,44 @@ function Journal() {
   );
 }
 
+/** The home-equipment shelf. Rendered planless too — "what do you have at
+ *  home" is a first-visit intake question, and the answer shapes the very
+ *  first AI draft. */
+function EquipmentShelf({
+  equipment,
+  onToggle,
+}: {
+  equipment: Equipment[];
+  onToggle: (id: string, owned: boolean) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-edge bg-card p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        My home equipment
+      </h2>
+      <p className="mt-1 text-xs text-muted">
+        Check what you have — your PT&apos;s AI-drafted plans only use what you own.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {equipment.map((e) => (
+          <button
+            key={e.id}
+            onClick={() => onToggle(e.id, !e.owned)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              e.owned
+                ? "border-accent-deep bg-accent-deep text-white"
+                : "border-edge text-muted"
+            }`}
+          >
+            {e.owned ? "✓ " : "+ "}
+            {e.name}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function currentStreakCount(streak: StreakDay[]): number {
   let n = 0;
   for (let i = streak.length - 1; i >= 0; i--) {
@@ -545,7 +591,11 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
               : "bg-accent-deep text-white hover:brightness-110"
           }`}
         >
-          {logged ? "Edit today's log" : "Log this exercise"}
+          {logged
+            ? "Edit today's log"
+            : item.kind === "modality"
+              ? "Log this care"
+              : "Log this exercise"}
         </button>
       ) : (
         <div className="mt-3 space-y-3 border-t border-edge pt-3 text-sm">
@@ -696,8 +746,9 @@ export default function PatientToday() {
   if (!data) return <p className="text-sm text-muted">Loading…</p>;
 
   if (!data.plan) {
-    // No plan yet is not nothing to do: the journal still reaches the PT, and
-    // is often where a patient says why they haven't started.
+    // No plan yet is not nothing to do: the pre-visit intake is the single
+    // most useful thing a patient can hand their PT, the equipment shelf
+    // shapes the first AI draft, and the journal still reaches the PT.
     return (
       <div className="space-y-5">
         <div className="rounded-xl border border-edge bg-card p-6 text-center">
@@ -706,12 +757,19 @@ export default function PatientToday() {
             Once your PT approves your program, it shows up here.
           </p>
         </div>
+        <PatientIntake />
+        <EquipmentShelf equipment={data.equipment} onToggle={(id, o) => void toggleEquipment(id, o)} />
         <Journal />
       </div>
     );
   }
 
   const homeItems = data.items.filter((i) => i.location === "home" || i.location === "both");
+  // "Ice before or after?" — answered by layout. Timed care brackets the
+  // session; untimed care and every exercise stay in the main run.
+  const beforeItems = homeItems.filter((i) => i.careTiming === "before");
+  const afterItems = homeItems.filter((i) => i.careTiming === "after");
+  const mainItems = homeItems.filter((i) => i.careTiming === null);
   const streakCount = currentStreakCount(data.streak);
 
   return (
@@ -755,11 +813,46 @@ export default function PatientToday() {
         homeItems.length === 0 ? (
           <p className="text-sm text-muted">No home exercises assigned yet.</p>
         ) : (
-          <ul className="space-y-2">
-            {homeItems.map((it) => (
-              <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
-            ))}
-          </ul>
+          <div className="space-y-3">
+            {beforeItems.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Before you start
+                </p>
+                <ul className="space-y-2">
+                  {beforeItems.map((it) => (
+                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                  ))}
+                </ul>
+              </div>
+            )}
+            {mainItems.length > 0 && (
+              <div>
+                {(beforeItems.length > 0 || afterItems.length > 0) && (
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Your exercises
+                  </p>
+                )}
+                <ul className="space-y-2">
+                  {mainItems.map((it) => (
+                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                  ))}
+                </ul>
+              </div>
+            )}
+            {afterItems.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                  After you finish
+                </p>
+                <ul className="space-y-2">
+                  {afterItems.map((it) => (
+                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )
       ) : !visits || visits.length === 0 ? (
         <p className="rounded-xl border border-edge bg-card p-6 text-center text-sm text-muted">
@@ -805,36 +898,47 @@ export default function PatientToday() {
         </ul>
       )}
 
-      <section className="rounded-xl border border-edge bg-card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          My home equipment
-        </h2>
-        <p className="mt-1 text-xs text-muted">
-          Check what you have — your PT&apos;s AI-drafted plans only use what you own.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {data.equipment.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => void toggleEquipment(e.id, !e.owned)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                e.owned
-                  ? "border-accent-deep bg-accent-deep text-white"
-                  : "border-edge text-muted"
-              }`}
-            >
-              {e.owned ? "✓ " : "+ "}
-              {e.name}
-            </button>
-          ))}
-        </div>
-      </section>
+      {data.plan.equipmentSuggestions.length > 0 && (
+        <section className="rounded-xl border border-edge bg-card p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            Worth getting
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Your PT thinks these would help your recovery at home. No pressure — tick them
+            in the equipment shelf below if you pick one up.
+          </p>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {data.plan.equipmentSuggestions.map((s) => (
+              <li key={s.slug} className="rounded-lg bg-raise/60 px-3 py-2">
+                <span className="font-medium">{s.name}</span>
+                {s.reason && <span className="text-muted"> — {s.reason}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <EquipmentShelf
+        equipment={data.equipment}
+        onToggle={(id, o) => void toggleEquipment(id, o)}
+      />
 
       <CareLogger
         options={data.careOptions}
         logged={data.adhocToday}
         onChanged={() => void load()}
       />
+
+      {data.goals && (
+        <GoalCheck
+          // Keyed on the newest rating date so a fresh save reseeds the
+          // sliders instead of holding stale local state.
+          key={data.goals.rows.map((g) => g.currentOn ?? g.baselineOn).join("|")}
+          goals={data.goals.rows}
+          promptDue={data.goals.promptDue}
+          onChanged={() => void load()}
+        />
+      )}
 
       <RaiseHand current={data.checkin} onChanged={() => void load()} />
 

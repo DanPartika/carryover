@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { INTAKE_SELECT_COLS } from "@/lib/intake/fields";
 import { progressionCandidates } from "@/lib/review/progressions";
 import { reviewSignals } from "@/lib/review/signals";
 
@@ -24,7 +25,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const {
     rows: [patient],
   } = await pool.query(
-    `SELECT id, display_name AS "displayName", email FROM users WHERE id = $1`,
+    `SELECT id, display_name AS "displayName", email, birth_year AS "birthYear"
+     FROM users WHERE id = $1`,
     [patientId],
   );
   if (!patient) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -49,18 +51,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   let plans: unknown[] = [];
   let review: unknown = null;
   if (episode) {
+    // The whole record, plus whether the patient wrote it: a pre-visit
+    // self-intake renders with a "review me" banner on the PT side.
     const { rows: intakes } = await pool.query(
-      `SELECT id, condition, body_regions AS "bodyRegions", onset_date::text AS "onsetDate",
-              pain_now AS "painNow", pain_worst AS "painWorst", goals, restrictions,
-              narrative, created_at AS "createdAt"
-       FROM intakes WHERE episode_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [episode.id],
+      `SELECT ${INTAKE_SELECT_COLS},
+              (i.author_user_id = $2) AS "patientSubmitted"
+       FROM intakes i WHERE i.episode_id = $1 ORDER BY i.created_at DESC LIMIT 1`,
+      [episode.id, patientId],
     );
     latestIntake = intakes[0] ?? null;
 
     const { rows: planRows } = await pool.query(
       `SELECT p.id, p.status, p.source, p.model, p.created_at AS "createdAt",
-              p.approved_at AS "approvedAt"
+              p.approved_at AS "approvedAt",
+              p.equipment_suggestions AS "equipmentSuggestions", p.ai_note AS "aiNote"
        FROM plans p WHERE p.episode_id = $1 AND p.status IN ('draft', 'active')
        ORDER BY p.status = 'active' DESC, p.created_at DESC`,
       [episode.id],
@@ -72,7 +76,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
               pi.sets, pi.reps, pi.hold_secs AS "holdSecs",
               pi.duration_mins AS "durationMins", pi.intensity,
               pi.frequency_per_week AS "frequencyPerWeek", pi.location,
-              pi.rationale, pi.sort
+              pi.rationale, pi.care_timing AS "careTiming", pi.sort
        FROM plan_items pi JOIN exercises e ON e.id = pi.exercise_id
        WHERE pi.plan_id = ANY($1::uuid[]) ORDER BY pi.sort, e.name`,
       [planRows.map((p) => p.id)],

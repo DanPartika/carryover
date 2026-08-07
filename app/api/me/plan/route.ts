@@ -7,8 +7,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { getPool } from "@/lib/db/pool";
+import { goalRows } from "@/lib/review/goals";
 
 const STREAK_DAYS = 14;
+/** Re-rate nudge cadence: roughly every two weeks is a check-in, more often
+ *  is nagging. The card can always be used sooner by choice. */
+const GOAL_PROMPT_DAYS = 14;
 
 export async function GET(req: NextRequest) {
   const pool = getPool();
@@ -24,22 +28,34 @@ export async function GET(req: NextRequest) {
     [user.id],
   );
 
-  let plan: { id: string; approvedAt: string } | null = null;
+  let plan: { id: string; approvedAt: string; equipmentSuggestions: unknown } | null = null;
   let items: unknown[] = [];
   if (episode) {
     const {
       rows: [p],
-    } = await pool.query<{ id: string; approved_at: string }>(
-      `SELECT id, approved_at FROM plans WHERE episode_id = $1 AND status = 'active'`,
+    } = await pool.query<{
+      id: string;
+      approved_at: string;
+      equipment_suggestions: unknown;
+    }>(
+      `SELECT id, approved_at, equipment_suggestions
+       FROM plans WHERE episode_id = $1 AND status = 'active'`,
       [episode.id],
     );
     if (p) {
-      plan = { id: p.id, approvedAt: p.approved_at };
+      // equipment_suggestions reached this side only because a PT approved
+      // the plan carrying them (or pruned them first). ai_note NEVER ships
+      // here — it's the PT-only channel.
+      plan = {
+        id: p.id,
+        approvedAt: p.approved_at,
+        equipmentSuggestions: p.equipment_suggestions ?? [],
+      };
       const { rows } = await pool.query(
         `SELECT pi.id, pi.exercise_id AS "exerciseId", pi.sets, pi.reps,
                 pi.hold_secs AS "holdSecs", pi.duration_mins AS "durationMins",
                 pi.intensity, pi.frequency_per_week AS "frequencyPerWeek",
-                pi.location, pi.rationale,
+                pi.location, pi.rationale, pi.care_timing AS "careTiming",
                 e.name, e.instructions, (e.images ->> 0) AS image, e.difficulty,
                 e.dosage_type AS "dosageType", e.kind,
                 al.id AS "logId", al.completed AS "logCompleted",
@@ -69,6 +85,22 @@ export async function GET(req: NextRequest) {
       [episode.id],
     );
     checkin = rows[0] ?? null;
+  }
+
+  // The intake's rated activities, and whether it's been long enough since
+  // the last rating to nudge for a fresh one. The re-rate is what turns the
+  // PT's next check-in into a real progress report — number beside number.
+  let goals: { rows: unknown; promptDue: boolean } | null = null;
+  if (episode) {
+    const rows = await goalRows(pool, episode.id);
+    if (rows) {
+      const last = rows.reduce(
+        (max, r) => ((r.currentOn ?? r.baselineOn) > max ? (r.currentOn ?? r.baselineOn) : max),
+        rows[0].baselineOn,
+      );
+      const elapsed = Math.floor((Date.now() - Date.parse(last)) / 86_400_000);
+      goals = { rows, promptDue: elapsed >= GOAL_PROMPT_DAYS };
+    }
   }
 
   const { rows: streakRows } = await pool.query<{ log_date: string }>(
@@ -120,6 +152,7 @@ export async function GET(req: NextRequest) {
     plan,
     items,
     checkin,
+    goals,
     streak,
     adhocToday,
     careOptions,

@@ -61,14 +61,28 @@ export async function POST(req: NextRequest) {
   let mode = "fixture";
   let dropped = 0;
   let kind = "plan-draft";
+  let equipmentSuggestions: Awaited<ReturnType<typeof draftPlan>>["equipmentSuggestions"] = [];
+  let aiNote: string | null = null;
 
   if (source === "ai-draft") {
+    // The whole intake, v2 columns included, plus the patient's age — the
+    // model drafts dosage differently for 19 and 80, and until 0011 it was
+    // never told which it had.
     const {
       rows: [intake],
     } = await pool.query<IntakeForPrompt & { id: string }>(
-      `SELECT id, condition, body_regions, onset_date::text AS onset_date,
-              pain_now, pain_worst, goals, restrictions, narrative
-       FROM intakes WHERE episode_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT i.id, i.condition, i.body_regions, i.onset_date::text AS onset_date,
+              i.pain_now, i.pain_worst, i.goals, i.restrictions, i.narrative,
+              i.side, i.onset_kind, i.trajectory, i.had_before, i.mechanism,
+              i.pain_avg, i.pain_pattern, i.aggravators, i.easers,
+              i.night_pain, i.worst_time, i.limited_activities, i.assistive_device,
+              i.conditions, i.red_flags, i.medications, i.surgeries,
+              i.imaging, i.prior_treatment, i.occupation, i.activity_level,
+              EXTRACT(YEAR FROM CURRENT_DATE)::int - u.birth_year AS age
+       FROM intakes i
+       JOIN episodes ep ON ep.id = i.episode_id
+       JOIN users u ON u.id = ep.patient_user_id
+       WHERE i.episode_id = $1 ORDER BY i.created_at DESC LIMIT 1`,
       [episode.id],
     );
 
@@ -201,6 +215,8 @@ export async function POST(req: NextRequest) {
       model = result.model;
       mode = result.mode;
       dropped = result.droppedItems;
+      equipmentSuggestions = result.equipmentSuggestions;
+      aiNote = result.aiNote;
       if (items.length === 0) {
         // All items dropped by grounding validation (or the model proposed
         // none) — an empty "AI draft" is a failure, not a plan.
@@ -240,17 +256,25 @@ export async function POST(req: NextRequest) {
     const {
       rows: [plan],
     } = await client.query<{ id: string }>(
-      `INSERT INTO plans (episode_id, status, source, model, created_by)
-       VALUES ($1, 'draft', $2, $3, $4) RETURNING id`,
-      [episode.id, source, model, user.id],
+      `INSERT INTO plans (episode_id, status, source, model, created_by,
+                          equipment_suggestions, ai_note)
+       VALUES ($1, 'draft', $2, $3, $4, $5, $6) RETURNING id`,
+      [
+        episode.id,
+        source,
+        model,
+        user.id,
+        equipmentSuggestions.length ? JSON.stringify(equipmentSuggestions) : null,
+        aiNote,
+      ],
     );
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       await client.query(
         `INSERT INTO plan_items
            (plan_id, exercise_id, sets, reps, hold_secs, duration_mins, intensity,
-            frequency_per_week, location, rationale, sort)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            frequency_per_week, location, rationale, care_timing, sort)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           plan.id,
           it.exercise_id,
@@ -262,6 +286,7 @@ export async function POST(req: NextRequest) {
           it.frequency_per_week,
           it.location,
           it.rationale,
+          it.care_timing,
           i,
         ],
       );

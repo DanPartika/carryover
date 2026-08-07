@@ -29,6 +29,7 @@ type ItemRow = {
   frequency_per_week: number;
   location: "office" | "home" | "both";
   rationale: string | null;
+  care_timing: "before" | "after" | null;
   sort: number;
   dosage_type: "reps" | "hold" | "time";
 };
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { rows: items } = await pool.query<ItemRow>(
     `SELECT pi.id, pi.exercise_id, pi.sets, pi.reps, pi.hold_secs, pi.duration_mins,
-            pi.intensity, pi.frequency_per_week, pi.location, pi.rationale, pi.sort,
-            e.dosage_type
+            pi.intensity, pi.frequency_per_week, pi.location, pi.rationale,
+            pi.care_timing, pi.sort, e.dosage_type
      FROM plan_items pi JOIN exercises e ON e.id = pi.exercise_id
      WHERE pi.plan_id = $1 ORDER BY pi.sort`,
     [plan.id],
@@ -97,8 +98,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const {
       rows: [next],
     } = await client.query<{ id: string }>(
-      `INSERT INTO plans (episode_id, status, source, created_by, supersedes_plan_id)
-       VALUES ($1, 'draft', 'progression', $2, $3) RETURNING id`,
+      // equipment_suggestions ride along: the patient's "worth getting" hint
+      // shouldn't vanish because one exercise stepped up a chain. ai_note
+      // stays behind — it described the draft it was written for.
+      `INSERT INTO plans (episode_id, status, source, created_by, supersedes_plan_id,
+                          equipment_suggestions)
+       VALUES ($1, 'draft', 'progression', $2, $3,
+               (SELECT equipment_suggestions FROM plans WHERE id = $3))
+       RETURNING id`,
       [plan.episode_id, user.id, plan.id],
     );
 
@@ -117,8 +124,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       await client.query(
         `INSERT INTO plan_items
            (plan_id, exercise_id, sets, reps, hold_secs, duration_mins, intensity,
-            frequency_per_week, location, rationale, sort)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            frequency_per_week, location, rationale, care_timing, sort)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           next.id,
           swapped ? edge.toExerciseId : it.exercise_id,
@@ -133,6 +140,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           // would tell the patient why they're doing something they no longer
           // are. The PT's note replaces it, or it goes blank.
           swapped ? note : it.rationale,
+          // Timing described the old care too; chain edges land on exercises,
+          // so a swapped item's timing doesn't survive the swap.
+          swapped ? null : it.care_timing,
           it.sort,
         ],
       );

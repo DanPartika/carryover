@@ -10,35 +10,17 @@ import { apiFetch } from "@/lib/api/client";
 import AdherencePanel from "@/components/AdherencePanel";
 import { useAuth } from "@/components/AuthContext";
 import ExerciseComposer from "@/components/ExerciseComposer";
+import { GoalsPanel } from "@/components/Goals";
+import IntakeForm, { type IntakePayload } from "@/components/IntakeForm";
+import IntakeSummary from "@/components/IntakeSummary";
 import NotesPanel from "@/components/NotesPanel";
-import ReviewPanel, { type Review } from "@/components/ReviewPanel";
+import { PlanDoors, ReviewBanner, RowSteps, type Review } from "@/components/ReviewPanel";
+import ReviewTimeline from "@/components/ReviewTimeline";
 import VisitMode from "@/components/VisitMode";
 import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
+import { REGION_OPTIONS, type IntakeRecord } from "@/lib/intake/fields";
 
-const REGION_OPTIONS = [
-  ["knee", "Knee"],
-  ["hip", "Hip"],
-  ["ankle_foot", "Ankle/foot"],
-  ["spine", "Spine"],
-  ["core", "Core"],
-  ["shoulder", "Shoulder"],
-  ["elbow", "Elbow"],
-  ["wrist_hand", "Wrist/hand"],
-  ["neck", "Neck"],
-] as const;
-
-type Intake = {
-  id: string;
-  condition: string;
-  bodyRegions: string[];
-  onsetDate: string | null;
-  painNow: number | null;
-  painWorst: number | null;
-  goals: string | null;
-  restrictions: string | null;
-  narrative: string | null;
-  createdAt: string;
-};
+type Intake = IntakeRecord & { patientSubmitted: boolean };
 
 type Item = {
   id?: string;
@@ -55,7 +37,10 @@ type Item = {
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
   rationale: string | null;
+  careTiming: "before" | "after" | null;
 };
+
+type EquipmentSuggestion = { slug: string; name: string; reason: string };
 
 type Plan = {
   id: string;
@@ -64,11 +49,18 @@ type Plan = {
   model: string | null;
   createdAt: string;
   approvedAt: string | null;
+  equipmentSuggestions: EquipmentSuggestion[] | null;
+  aiNote: string | null;
   items: Item[];
 };
 
 type Overview = {
-  patient: { id: string; displayName: string | null; email: string | null };
+  patient: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+    birthYear: number | null;
+  };
   equipment: string[];
   episode: { id: string; condition: string } | null;
   latestIntake: Intake | null;
@@ -94,29 +86,40 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [dashboardKey, setDashboardKey] = useState(0);
+  // Bumped on every reload so the check-in history refetches after any
+  // decision (swap, revamp approval, no-change) without its own plumbing.
+  const [timelineKey, setTimelineKey] = useState(0);
 
-  // Intake form state
+  // Intake form open/closed — the fields themselves live in IntakeForm.
   const [showIntake, setShowIntake] = useState(false);
-  const [condition, setCondition] = useState("");
-  const [regions, setRegions] = useState<string[]>(["knee"]);
-  const [onsetDate, setOnsetDate] = useState("");
-  const [painNow, setPainNow] = useState("5");
-  const [painWorst, setPainWorst] = useState("7");
-  const [goals, setGoals] = useState("");
-  const [restrictions, setRestrictions] = useState("");
-  const [narrative, setNarrative] = useState("");
 
   // Draft editor state (mirrors the draft plan's items)
   const [draftItems, setDraftItems] = useState<Item[] | null>(null);
+  // Which AI equipment suggestions survive the PT's pruning — save persists
+  // the subset, approval publishes it to the patient's Today.
+  const [keptSuggestions, setKeptSuggestions] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [composing, setComposing] = useState<string | null>(null);
+  // Picker facets (Dan's ask: "more than just the search bar"). kind=modality
+  // is the first manual path care has ever had into a plan — before this,
+  // only the AI could prescribe ice.
+  const [pickRegion, setPickRegion] = useState("");
+  const [pickLevel, setPickLevel] = useState("");
+  const [pickKind, setPickKind] = useState<"exercise" | "modality" | "any">("exercise");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Drop a freshly created (or searched) exercise straight into the draft,
-   *  seeded with the dosage its type expects. */
-  function addToDraft(hit: { id: string; name: string; dosageType: DosageType }) {
+   *  seeded with the dosage its type expects. Care defaults to daily — you
+   *  don't ice three times a week. */
+  function addToDraft(hit: {
+    id: string;
+    name: string;
+    dosageType: DosageType;
+    kind?: "exercise" | "modality";
+  }) {
+    const kind = hit.kind ?? "exercise";
     setDraftItems((prev) => [
       ...(prev ?? []),
       {
@@ -124,15 +127,16 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
         name: hit.name,
         image: null,
         dosageType: hit.dosageType,
-        kind: "exercise",
+        kind,
         sets: hit.dosageType === "time" ? null : 3,
         reps: hit.dosageType === "reps" ? 10 : null,
         holdSecs: hit.dosageType === "hold" ? 20 : null,
-        durationMins: hit.dosageType === "time" ? 10 : null,
+        durationMins: hit.dosageType === "time" ? (kind === "modality" ? 15 : 10) : null,
         intensity: null,
-        frequencyPerWeek: 5,
+        frequencyPerWeek: kind === "modality" ? 7 : 5,
         location: "home",
         rationale: "",
+        careTiming: null,
       },
     ]);
     setDirty(true);
@@ -151,7 +155,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       setData(d);
       const draft = d.plans.find((p) => p.status === "draft");
       setDraftItems(draft ? draft.items.map((i) => ({ ...i })) : null);
+      setKeptSuggestions((draft?.equipmentSuggestions ?? []).map((s) => s.slug));
       setDirty(false);
+      setTimelineKey((n) => n + 1);
     } catch {
       setError("network error — reload the page");
     }
@@ -164,18 +170,26 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     if (authReady && clinicId) void reload();
   }, [authReady, clinicId, reload]);
 
-  // Exercise search for the editor's add row. All setState happens inside the
-  // debounce callback (async), never in the effect body itself.
+  // Exercise search for the editor's add row. A set facet searches with an
+  // empty q — "show me knee work under level 2" is a browse, not a lookup.
+  // All setState happens inside the debounce callback (async), never in the
+  // effect body itself.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     const q = search.trim();
+    const filtered = !!(pickRegion || pickLevel || pickKind !== "exercise");
     searchTimer.current = setTimeout(
       async () => {
-        if (!q) {
+        if (!q && !filtered) {
           setHits([]);
           return;
         }
-        const res = await apiFetch(`/api/exercises?q=${encodeURIComponent(q)}&limit=8`);
+        const params = new URLSearchParams({ limit: "12" });
+        if (q) params.set("q", q);
+        if (pickRegion) params.set("region", pickRegion);
+        if (pickLevel) params.set("difficulty", pickLevel);
+        if (pickKind !== "exercise") params.set("kind", pickKind);
+        const res = await apiFetch(`/api/exercises?${params}`);
         if (res.ok) {
           const d = (await res.json()) as { items: SearchHit[] };
           setHits(d.items);
@@ -186,9 +200,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [search]);
+  }, [search, pickRegion, pickLevel, pickKind]);
 
-  async function submitIntake() {
+  async function submitIntake(payload: IntakePayload) {
     // The post-intake reload rebuilds the draft editor from the server —
     // unsaved draft edits must land first (same contract as approve()).
     if (dirty && !(await saveDraft())) return;
@@ -198,18 +212,7 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       const res = await apiFetch("/api/intakes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clinicId,
-          patientUserId: patientId,
-          condition,
-          bodyRegions: regions,
-          onsetDate: onsetDate || null,
-          painNow: painNow === "" ? null : Number(painNow),
-          painWorst: painWorst === "" ? null : Number(painWorst),
-          goals,
-          restrictions,
-          narrative,
-        }),
+        body: JSON.stringify({ clinicId, patientUserId: patientId, ...payload }),
       });
       if (!res.ok) {
         setError(`intake failed (${res.status})`);
@@ -251,7 +254,8 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  const draftPlanId = data?.plans.find((p) => p.status === "draft")?.id;
+  const draftPlan = data?.plans.find((p) => p.status === "draft");
+  const draftPlanId = draftPlan?.id;
 
   async function saveDraft(): Promise<boolean> {
     if (!draftPlanId || !draftItems) return false;
@@ -271,7 +275,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
             frequencyPerWeek: i.frequencyPerWeek,
             location: i.location,
             rationale: i.rationale,
+            careTiming: i.careTiming,
           })),
+          keepSuggestionSlugs: keptSuggestions,
         }),
       });
       if (!res.ok) {
@@ -365,167 +371,50 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
 
       {error && <p className="text-sm text-flag">{error}</p>}
 
-      {/* Intake */}
+      {/* Intake. A patient-submitted one renders with a review banner; the
+          PT's "Review intake" pre-fills the form from it and saving mints the
+          PT-authored row that supersedes it (append-only, as ever). */}
       <section className="rounded-xl border border-edge bg-card p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Intake</h2>
           {!showIntake && (
             <button
-              onClick={() => {
-                if (data.latestIntake) {
-                  const li = data.latestIntake;
-                  setCondition(li.condition);
-                  setRegions(li.bodyRegions);
-                  setOnsetDate(li.onsetDate ?? "");
-                  setPainNow(li.painNow?.toString() ?? "");
-                  setPainWorst(li.painWorst?.toString() ?? "");
-                  setGoals(li.goals ?? "");
-                  setRestrictions(li.restrictions ?? "");
-                  setNarrative(li.narrative ?? "");
-                }
-                setShowIntake(true);
-              }}
+              onClick={() => setShowIntake(true)}
               className="rounded-full border border-edge px-3 py-1 text-sm text-muted hover:bg-raise"
             >
-              {data.latestIntake ? "New intake" : "Start intake"}
+              {data.latestIntake
+                ? data.latestIntake.patientSubmitted
+                  ? "Review intake"
+                  : "New intake"
+                : "Start intake"}
             </button>
           )}
         </div>
 
         {!showIntake && data.latestIntake && (
-          <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-muted">Condition</dt>
-              <dd className="font-medium">{data.latestIntake.condition}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Pain (now / worst)</dt>
-              <dd className="font-medium">
-                {data.latestIntake.painNow ?? "?"} / {data.latestIntake.painWorst ?? "?"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted">Surgery/onset</dt>
-              <dd className="font-medium">{data.latestIntake.onsetDate ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Restrictions</dt>
-              <dd className="font-medium">{data.latestIntake.restrictions ?? "—"}</dd>
-            </div>
-            {data.latestIntake.goals && (
-              <div className="sm:col-span-2">
-                <dt className="text-muted">Goals</dt>
-                <dd className="font-medium">{data.latestIntake.goals}</dd>
-              </div>
-            )}
-          </dl>
+          <IntakeSummary
+            intake={data.latestIntake}
+            birthYear={data.patient.birthYear}
+            patientSubmitted={data.latestIntake.patientSubmitted}
+          />
         )}
         {!showIntake && !data.latestIntake && (
           <p className="mt-2 text-sm text-muted">
-            No intake yet — it powers the AI draft and the library filtering.
+            No intake yet — it powers the AI draft and the library filtering. {name} can
+            pre-fill it from their own Today page before the first visit.
           </p>
         )}
 
         {showIntake && (
-          <div className="mt-3 space-y-3 text-sm">
-            <input
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              placeholder="Condition / procedure (e.g. post-op ACL reconstruction, right knee)"
-              className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
-            />
-            <div className="flex flex-wrap gap-2">
-              {REGION_OPTIONS.map(([v, label]) => (
-                <label
-                  key={v}
-                  className={`cursor-pointer rounded-full border px-3 py-1 text-xs ${
-                    regions.includes(v)
-                      ? "border-accent-deep bg-accent-deep text-white"
-                      : "border-edge text-muted"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="hidden"
-                    checked={regions.includes(v)}
-                    onChange={(e) =>
-                      setRegions((prev) =>
-                        e.target.checked ? [...prev, v] : prev.filter((r) => r !== v),
-                      )
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <span className="text-muted">Surgery/onset</span>
-                <input
-                  type="date"
-                  value={onsetDate}
-                  onChange={(e) => setOnsetDate(e.target.value)}
-                  className="rounded-lg border border-edge bg-card px-2 py-1.5"
-                />
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="text-muted">Pain now</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={painNow}
-                  onChange={(e) => setPainNow(e.target.value)}
-                  className={numInput}
-                />
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="text-muted">worst</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={painWorst}
-                  onChange={(e) => setPainWorst(e.target.value)}
-                  className={numInput}
-                />
-              </label>
-            </div>
-            <input
-              value={goals}
-              onChange={(e) => setGoals(e.target.value)}
-              placeholder="Goals (return to running, stairs without pain…)"
-              className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
-            />
-            <input
-              value={restrictions}
-              onChange={(e) => setRestrictions(e.target.value)}
-              placeholder="Restrictions / precautions (weight-bearing status, ROM limits…)"
-              className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
-            />
-            <textarea
-              value={narrative}
-              onChange={(e) => setNarrative(e.target.value)}
-              placeholder="Narrative — anything the form missed"
-              rows={3}
-              className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => void submitIntake()}
-                disabled={!condition.trim() || busy === "intake"}
-                className="rounded-lg bg-accent-deep px-4 py-2 font-semibold text-white hover:brightness-110 disabled:opacity-40"
-              >
-                {busy === "intake" ? "Saving…" : "Save intake"}
-              </button>
-              <button
-                onClick={() => setShowIntake(false)}
-                className="rounded-lg border border-edge px-4 py-2 text-muted hover:bg-raise"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          <IntakeForm
+            persona="pt"
+            initial={data.latestIntake}
+            initialBirthYear={data.patient.birthYear}
+            busy={busy === "intake"}
+            submitLabel="Save intake"
+            onSubmit={(p) => void submitIntake(p)}
+            onCancel={() => setShowIntake(false)}
+          />
         )}
       </section>
 
@@ -553,6 +442,12 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
             <p className="rounded-lg bg-raise/70 px-3 py-2 text-xs text-muted">
               {`Draft — nothing reaches ${name} until you approve. Edit dosage, swap or remove items, and rewrite any rationale (it's shown to the patient after approval).`}
             </p>
+            {draftPlan?.aiNote && (
+              <p className="rounded-lg border border-flag/40 bg-flag/5 px-3 py-2 text-xs">
+                <span className="font-semibold">For your eyes only</span> — the draft flagged:{" "}
+                {draftPlan.aiNote}
+              </p>
+            )}
             {/* fieldset disables every control inside while a request is in
                 flight — the save snapshot can never diverge from the screen */}
             <fieldset disabled={busy !== null} className="space-y-3">
@@ -560,8 +455,31 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
               {draftItems.map((it, idx) => (
                 <li key={`${it.exerciseId}-${idx}`} className="rounded-lg border border-edge p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">{it.name}</span>
+                    <span className="text-sm font-semibold">
+                      {it.name}
+                      {it.kind === "modality" && (
+                        <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs font-normal text-muted">
+                          care
+                        </span>
+                      )}
+                    </span>
                     <div className="flex items-center gap-2 text-xs">
+                      {/* "Ice before or after?" — timing only exists for care. */}
+                      {it.kind === "modality" && (
+                        <select
+                          value={it.careTiming ?? ""}
+                          onChange={(e) =>
+                            updateItem(idx, {
+                              careTiming: (e.target.value || null) as Item["careTiming"],
+                            })
+                          }
+                          className="rounded-md border border-edge bg-card px-1.5 py-1"
+                        >
+                          <option value="">anytime</option>
+                          <option value="before">before exercises</option>
+                          <option value="after">after exercises</option>
+                        </select>
+                      )}
                       <select
                         value={it.location}
                         onChange={(e) =>
@@ -670,15 +588,57 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                       />
                     </label>
                   </div>
-                  <input
+                  {/* PTs type here for real — a one-line box made every note
+                      a telegram (Dan's ask #6). */}
+                  <textarea
                     value={it.rationale ?? ""}
                     onChange={(e) => updateItem(idx, { rationale: e.target.value })}
+                    rows={2}
                     placeholder="Why (patient-visible after approval)"
                     className="mt-2 w-full rounded-md border border-edge bg-card px-2 py-1.5 text-xs outline-none focus:border-accent"
                   />
                 </li>
               ))}
             </ul>
+
+            {/* Equipment worth acquiring — the model's picks, the PT's veto.
+                Survivors reach the patient's Today after approval. */}
+            {(draftPlan?.equipmentSuggestions?.length ?? 0) > 0 && (
+              <div className="rounded-lg border border-edge p-3">
+                <p className="text-xs font-medium text-muted">
+                  Worth getting — shown to {name} after approval. Remove any you don&apos;t
+                  want suggested.
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {draftPlan!.equipmentSuggestions!
+                    .filter((s) => keptSuggestions.includes(s.slug))
+                    .map((s) => (
+                      <li
+                        key={s.slug}
+                        className="flex items-start justify-between gap-2 rounded-lg bg-raise/60 px-3 py-1.5 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-muted"> — {s.reason}</span>
+                        </span>
+                        <button
+                          onClick={() => {
+                            setKeptSuggestions((prev) => prev.filter((x) => x !== s.slug));
+                            setDirty(true);
+                          }}
+                          className="text-muted hover:text-flag"
+                          title="Don't suggest this"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  {draftPlan!.equipmentSuggestions!.every(
+                    (s) => !keptSuggestions.includes(s.slug),
+                  ) && <li className="text-xs text-muted">None kept — nothing will be suggested.</li>}
+                </ul>
+              </div>
+            )}
 
             {composing !== null ? (
               <ExerciseComposer
@@ -692,13 +652,62 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
               />
             ) : (
               <div className="relative">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  <div className="flex overflow-hidden rounded-full border border-edge">
+                    {(
+                      [
+                        ["exercise", "Exercises"],
+                        ["modality", "Care"],
+                        ["any", "All"],
+                      ] as const
+                    ).map(([v, label]) => (
+                      <button
+                        key={v}
+                        onClick={() => setPickKind(v)}
+                        className={`px-2.5 py-1 ${
+                          pickKind === v ? "bg-accent-deep font-medium text-white" : "text-muted hover:bg-raise"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <select
+                    value={pickRegion}
+                    onChange={(e) => setPickRegion(e.target.value)}
+                    className="rounded-md border border-edge bg-card px-1.5 py-1"
+                  >
+                    <option value="">any region</option>
+                    {REGION_OPTIONS.map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={pickLevel}
+                    onChange={(e) => setPickLevel(e.target.value)}
+                    className="rounded-md border border-edge bg-card px-1.5 py-1"
+                  >
+                    <option value="">any level</option>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>
+                        up to lvl {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Add exercise — search the library…"
+                  placeholder={
+                    pickKind === "modality"
+                      ? "Add care — ice, heat, TENS…"
+                      : "Add exercise — search name or tag, or just set a filter…"
+                  }
                   className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
                 />
-                {search.trim() && (
+                {(search.trim() || pickRegion || pickLevel || pickKind !== "exercise") && (
                   <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-card shadow-lg">
                     {hits.map((h) => (
                       <li key={h.id}>
@@ -707,23 +716,34 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                           className="block w-full px-3 py-2 text-left text-sm hover:bg-raise"
                         >
                           {h.name}
-                          {h.difficulty ? (
+                          {h.kind === "modality" && (
+                            <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                              care
+                            </span>
+                          )}
+                          {h.difficulty && h.kind !== "modality" ? (
                             <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
                           ) : null}
                         </button>
                       </li>
                     ))}
-                    {/* Always offered, not only on zero results: the search may
-                        have found something similar-but-wrong, and that's
-                        exactly when a PT wants their own version. */}
-                    <li className="border-t border-edge">
-                      <button
-                        onClick={() => setComposing(search.trim())}
-                        className="block w-full px-3 py-2 text-left text-sm text-accent-deep hover:bg-raise"
-                      >
-                        ＋ Create &ldquo;{search.trim()}&rdquo; for this clinic
-                      </button>
-                    </li>
+                    {hits.length === 0 && (
+                      <li className="px-3 py-2 text-sm text-muted">Nothing matches.</li>
+                    )}
+                    {/* Always offered when there's a name to give it, not only
+                        on zero results: the search may have found something
+                        similar-but-wrong, and that's exactly when a PT wants
+                        their own version. */}
+                    {search.trim() && (
+                      <li className="border-t border-edge">
+                        <button
+                          onClick={() => setComposing(search.trim())}
+                          className="block w-full px-3 py-2 text-left text-sm text-accent-deep hover:bg-raise"
+                        >
+                          ＋ Create &ldquo;{search.trim()}&rdquo; for this clinic
+                        </button>
+                      </li>
+                    )}
                   </ul>
                 )}
               </div>
@@ -756,10 +776,22 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        {/* Active plan (read-only) */}
-        {!draftItems && activePlan && (
-          <div className="mt-3">
-            <p className="text-xs text-muted">
+        {/* Active plan — the check-in lives IN the table now: the signal
+            banner up top, each row carrying its own charted steps, and the
+            whole-plan doors at the foot. One place to look, one decision. */}
+        {!draftItems && activePlan && data.episode && (
+          <div className="mt-1">
+            <ReviewBanner review={data.review} patientName={name} />
+            {(data.review?.goals?.length ?? 0) > 0 && (
+              <GoalsPanel
+                goals={data.review!.goals!}
+                patientId={patientId}
+                clinicId={clinicId}
+                patientName={name}
+                onChanged={reload}
+              />
+            )}
+            <p className="mt-3 text-xs text-muted">
               Active since {new Date(activePlan.approvedAt!).toLocaleDateString()} ·{" "}
               {activePlan.source === "ai-draft"
                 ? "AI-drafted, PT-approved"
@@ -768,25 +800,57 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                   : "built manually"}
             </p>
             <ul className="mt-2 space-y-1.5">
-              {activePlan.items.map((it) => (
-                <li
-                  key={it.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raise/60 px-3 py-2 text-sm"
-                >
-                  <span className="font-medium">
-                    {it.name}
-                    {it.kind === "modality" && (
-                      <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
-                        care
+              {activePlan.items.map((it) => {
+                const steps = (data.review?.progressions ?? []).filter(
+                  (p) => p.planItemId === it.id,
+                );
+                return (
+                  <li key={it.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {it.name}
+                        {it.kind === "modality" && (
+                          <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                            care
+                          </span>
+                        )}
                       </span>
+                      <span className="text-xs text-muted">
+                        {dosageText(it)} · {it.frequencyPerWeek}/wk · {it.location}
+                        {it.careTiming ? ` · ${it.careTiming} exercises` : ""}
+                      </span>
+                    </div>
+                    {typeof it.id === "string" && steps.length > 0 && (
+                      <RowSteps
+                        item={it as typeof it & { id: string }}
+                        progressions={steps}
+                        activePlanId={activePlan.id}
+                        patientName={name}
+                        onChanged={reload}
+                      />
                     )}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {dosageText(it)} · {it.frequencyPerWeek}/wk · {it.location}
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
+            {(activePlan.equipmentSuggestions?.length ?? 0) > 0 && (
+              <p className="mt-2 text-xs text-muted">
+                Suggested to get:{" "}
+                {activePlan.equipmentSuggestions!
+                  .map((s) => s.name)
+                  .join(", ")}{" "}
+                — {name} sees this on their Today page.
+              </p>
+            )}
+            <PlanDoors
+              episodeId={data.episode.id}
+              patientName={name}
+              daysOnPlan={data.review?.daysOnPlan ?? null}
+              due={data.review?.due ?? false}
+              onRevamp={(note) => draftWithAi("progress", note)}
+              revamping={busy === "draft"}
+              onChanged={reload}
+            />
           </div>
         )}
 
@@ -795,19 +859,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
         )}
       </section>
 
-      {/* Check-in (Dan's ask #2). Hidden while a draft is open: the PT is
-          already mid-revision, and a second door would mint a second draft. */}
-      {data.episode && !draftItems && (
-        <ReviewPanel
-          episodeId={data.episode.id}
-          activePlanId={activePlan?.id ?? null}
-          patientName={name}
-          review={data.review}
-          items={activePlan?.items ?? []}
-          onChanged={reload}
-          onRevamp={(note) => draftWithAi("progress", note)}
-          revamping={busy === "draft"}
-        />
+      {/* Every decision ever made on this episode, with its frozen numbers. */}
+      {data.episode && (
+        <ReviewTimeline patientId={patientId} clinicId={clinicId} refreshKey={timelineKey} />
       )}
 
       {/* In-office quick mode (step 6): what happened in the room. */}

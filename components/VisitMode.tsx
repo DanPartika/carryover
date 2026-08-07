@@ -54,7 +54,21 @@ type SearchHit = {
   name: string;
   difficulty: number | null;
   dosageType: DosageType;
+  kind: "exercise" | "modality";
 };
+
+const QUICKADD_REGIONS = [
+  ["", "any region"],
+  ["knee", "knee"],
+  ["hip", "hip"],
+  ["ankle_foot", "ankle/foot"],
+  ["spine", "spine"],
+  ["core", "core"],
+  ["shoulder", "shoulder"],
+  ["elbow", "elbow"],
+  ["wrist_hand", "wrist/hand"],
+  ["neck", "neck"],
+] as const;
 
 function minutesBetween(a: string, b: string): number {
   return Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 60000));
@@ -91,6 +105,8 @@ export default function VisitMode({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searchRegion, setSearchRegion] = useState("");
+  const [searchCare, setSearchCare] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
@@ -118,17 +134,23 @@ export default function VisitMode({
     void load();
   }, [load]);
 
-  // Library search for quick-add. All setState is inside the debounce callback.
+  // Library search for quick-add. Care toggle or a region alone is enough to
+  // browse — in the room the PT reaches for "ice" without typing "ice".
+  // All setState is inside the debounce callback.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     const q = search.trim();
     searchTimer.current = setTimeout(
       async () => {
-        if (!q) {
+        if (!q && !searchRegion && !searchCare) {
           setHits([]);
           return;
         }
-        const res = await apiFetch(`/api/exercises?q=${encodeURIComponent(q)}&limit=6`);
+        const params = new URLSearchParams({ limit: "6" });
+        if (q) params.set("q", q);
+        if (searchRegion) params.set("region", searchRegion);
+        if (searchCare) params.set("kind", "modality");
+        const res = await apiFetch(`/api/exercises?${params}`);
         if (res.ok) setHits(((await res.json()) as { items: SearchHit[] }).items);
       },
       q ? 250 : 0,
@@ -136,7 +158,7 @@ export default function VisitMode({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [search]);
+  }, [search, searchRegion, searchCare]);
 
   async function startVisit() {
     setBusy("start");
@@ -330,10 +352,35 @@ export default function VisitMode({
           )}
 
           <div className="relative">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
+              <button
+                onClick={() => setSearchCare(!searchCare)}
+                className={`rounded-full border px-2.5 py-1 ${
+                  searchCare
+                    ? "border-accent-deep bg-accent-deep font-medium text-white"
+                    : "border-edge text-muted hover:bg-raise"
+                }`}
+              >
+                Care (ice, heat…)
+              </button>
+              <select
+                value={searchRegion}
+                onChange={(e) => setSearchRegion(e.target.value)}
+                className="rounded-md border border-edge bg-card px-1.5 py-1"
+              >
+                {QUICKADD_REGIONS.map(([v, label]) => (
+                  <option key={v} value={v}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Did something else? Search the library…"
+              placeholder={
+                searchCare ? "Did care in the room? Tap one below…" : "Did something else? Search the library…"
+              }
               className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
             />
             {hits.length > 0 && (
@@ -350,7 +397,7 @@ export default function VisitMode({
                           sets: h.dosageType === "time" ? null : 3,
                           reps: h.dosageType === "reps" ? 10 : null,
                           holdSecs: h.dosageType === "hold" ? 20 : null,
-                          durationMins: h.dosageType === "time" ? 10 : null,
+                          durationMins: h.dosageType === "time" ? (h.kind === "modality" ? 15 : 10) : null,
                           intensity: null,
                           pain: null,
                           note: null,
@@ -361,7 +408,12 @@ export default function VisitMode({
                       className="block w-full px-3 py-2 text-left text-sm hover:bg-raise"
                     >
                       {h.name}
-                      {h.difficulty ? (
+                      {h.kind === "modality" && (
+                        <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                          care
+                        </span>
+                      )}
+                      {h.difficulty && h.kind !== "modality" ? (
                         <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
                       ) : null}
                     </button>
@@ -372,10 +424,11 @@ export default function VisitMode({
           </div>
 
           <div className="border-t border-edge pt-3">
-            <input
+            <textarea
               value={wrapNote}
               onChange={(e) => setWrapNote(e.target.value)}
-              placeholder="How did it go? (one line, the patient sees this)"
+              rows={2}
+              placeholder="How did it go? (the patient sees this)"
               className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
             />
             <button
@@ -504,11 +557,14 @@ function ItemDetail({
           className={numInput}
         />
       </label>
-      <input
+      {/* The per-exercise note is where the PT actually types during a
+          session — full-width and multi-line, not a min-w-32 sliver. */}
+      <textarea
         value={draft.note ?? ""}
         onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-        placeholder="note"
-        className="min-w-32 flex-1 rounded-md border border-edge bg-card px-2 py-1 outline-none focus:border-accent"
+        rows={2}
+        placeholder="Note — how it went, cues that worked, what to try next time"
+        className="w-full rounded-md border border-edge bg-card px-2 py-1.5 outline-none focus:border-accent"
       />
     </div>
   );

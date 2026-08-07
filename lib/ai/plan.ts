@@ -33,6 +33,32 @@ export type IntakeForPrompt = {
   goals: string | null;
   restrictions: string | null;
   narrative: string | null;
+  // Intake v2 (0011). All nullable: a revamp's synthesized stand-in and any
+  // pre-0011 intake simply render fewer lines.
+  side?: string | null;
+  onset_kind?: string | null;
+  trajectory?: string | null;
+  had_before?: boolean | null;
+  mechanism?: string | null;
+  pain_avg?: number | null;
+  pain_pattern?: string | null;
+  aggravators?: string | null;
+  easers?: string | null;
+  night_pain?: boolean | null;
+  worst_time?: string | null;
+  limited_activities?: { activity: string; rating: number }[] | null;
+  assistive_device?: string | null;
+  conditions?: string[];
+  red_flags?: string[];
+  medications?: string | null;
+  surgeries?: string | null;
+  imaging?: string | null;
+  prior_treatment?: string | null;
+  occupation?: string | null;
+  activity_level?: string | null;
+  /** From users.birth_year, computed by the caller — dosage for a 19-year-old
+   *  and an 80-year-old are different questions. */
+  age?: number | null;
 };
 
 export type DraftItem = {
@@ -45,13 +71,23 @@ export type DraftItem = {
   frequency_per_week: number;
   location: "office" | "home" | "both";
   rationale: string;
+  /** Modality items only: when in the session this care happens. Null for
+   *  exercises and for genuinely-anytime care (elevation, TENS as needed). */
+  care_timing: "before" | "after" | null;
 };
+
+export type EquipmentSuggestion = { slug: string; name: string; reason: string };
 
 export type DraftResult = {
   items: DraftItem[];
   mode: "fixture" | "lithe";
   model: string | null;
   droppedItems: number;
+  /** Cheap acquisitions that would unlock better home care — PT prunes them
+   *  in the draft; the survivors reach the patient with approval. */
+  equipmentSuggestions: EquipmentSuggestion[];
+  /** Model note for the PT only. Never patient-visible. */
+  aiNote: string | null;
 };
 
 /** What a revamp draft gets that a first draft can't have: six weeks of
@@ -193,19 +229,64 @@ export function validateItems(
       frequency_per_week: clamp(r.frequency_per_week, 1, 14) ?? 5,
       location,
       rationale: String(r.rationale ?? "").slice(0, 500),
+      // Timing is a modality concept. "Squats: after" would render a sequence
+      // cue on an exercise card, so it's stripped rather than stored.
+      care_timing:
+        ex.kind === "modality" && (r.care_timing === "before" || r.care_timing === "after")
+          ? r.care_timing
+          : null,
     });
   }
   return { items, dropped };
 }
 
-/** Deterministic offline draft: conservative difficulty ceiling from pain and
- *  recency, knee-core-first selection, isometric-aware dosage defaults. */
+/** Keep only suggestions naming real catalog slugs the patient doesn't own,
+ *  capped at 2 — anything else the model dreamt up is dropped, same doctrine
+ *  as exercise grounding. */
+export function validateEquipmentSuggestions(
+  raw: unknown,
+  catalog: { slug: string; name: string }[],
+  ownedSlugs: Set<string>,
+): EquipmentSuggestion[] {
+  if (!Array.isArray(raw)) return [];
+  const bySlug = new Map(catalog.map((c) => [c.slug, c.name]));
+  const out: EquipmentSuggestion[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (out.length >= 2) break;
+    const r = entry as Record<string, unknown>;
+    const slug = String(r.slug ?? "");
+    const name = bySlug.get(slug);
+    if (!name || ownedSlugs.has(slug) || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push({ slug, name, reason: String(r.reason ?? "").slice(0, 200) });
+  }
+  return out;
+}
+
+/** Deterministic timing for fixture-mode modalities: warmth loosens before,
+ *  cold settles after — mechanical, from the item's own name. */
+function fixtureTiming(e: SliceExercise): "before" | "after" | null {
+  if (e.kind !== "modality") return null;
+  const n = e.name.toLowerCase();
+  if (n.includes("heat")) return "before";
+  if (n.includes("ice") || n.includes("cold") || n.includes("compression")) return "after";
+  return null;
+}
+
+/** Deterministic offline draft: conservative difficulty ceiling from pain,
+ *  recency, and age; knee-core-first selection, isometric-aware defaults. */
 function fixtureDraft(intake: IntakeForPrompt, slice: SliceExercise[]): unknown[] {
   const pain = intake.pain_now ?? 5;
   const daysSince = intake.onset_date
     ? Math.max(0, Math.floor((Date.now() - new Date(intake.onset_date).getTime()) / 86_400_000))
     : 90;
-  const ceiling = pain >= 6 || daysSince < 21 ? 2 : pain >= 3 || daysSince < 60 ? 3 : 4;
+  let ceiling = pain >= 6 || daysSince < 21 ? 2 : pain >= 3 || daysSince < 60 ? 3 : 4;
+  // Age and red flags each pull the ceiling down a notch — the fixture can't
+  // exercise judgment, so it borrows the most conservative reading.
+  if ((intake.age != null && intake.age >= 70) || (intake.red_flags?.length ?? 0) > 0) {
+    ceiling = Math.min(ceiling, 2);
+  }
 
   return slice
     .filter((e) => (e.difficulty ?? 3) <= ceiling)
@@ -227,6 +308,7 @@ function fixtureDraft(intake: IntakeForPrompt, slice: SliceExercise[]): unknown[
       frequency_per_week: (e.difficulty ?? 3) <= 2 ? 7 : 5,
       location: e.home_eligible ? "both" : "office",
       rationale: `Level ${e.difficulty ?? "?"} ${e.body_regions.join("/") || "general"} work within current pain and recovery stage.`,
+      care_timing: fixtureTiming(e),
     }));
 }
 
@@ -264,6 +346,7 @@ function fixtureRevamp(
         ex.id === cur.exerciseId
           ? "Carried forward from the current plan."
           : `Charted next step up from ${cur.name}.`,
+      care_timing: fixtureTiming(ex),
     });
   }
   // Nothing from the old plan survives in the slice (regions changed, items
@@ -304,8 +387,36 @@ const PLAN_TOOL = {
               description:
                 "One sentence, patient-readable (shown to the patient after PT approval)",
             },
+            care_timing: {
+              type: "string",
+              enum: ["before", "after"],
+              description:
+                "MODALITY items only: 'before' the exercises (heat, warm-up modalities) or 'after' them (ice, compression). Omit for exercises and for care that's genuinely anytime.",
+            },
           },
         },
+      },
+      equipment_suggestions: {
+        type: "array",
+        description:
+          "At most 2. Cheap, genuinely useful items the patient does NOT own whose purchase would unlock meaningfully better home care. Use catalog slugs from EQUIPMENT CATALOG. Never suggest gym machinery.",
+        items: {
+          type: "object",
+          required: ["slug", "reason"],
+          properties: {
+            slug: { type: "string", description: "a slug from EQUIPMENT CATALOG" },
+            reason: {
+              type: "string",
+              description:
+                "One patient-readable sentence: what owning it would let them do at home",
+            },
+          },
+        },
+      },
+      pt_note: {
+        type: "string",
+        description:
+          "OPTIONAL, one or two sentences, for the PT's eyes only (never shown to the patient): screening answers worth eyeballing before loading, medication interactions with exercise, anything the PT should verify in the room. Omit when there's nothing worth flagging.",
       },
     },
   },
@@ -320,6 +431,9 @@ Rules:
 - Items marked home_eligible=false can only be location "office".
 - Dosage follows each item's dosage_type, and nothing else: reps -> sets + reps; hold -> sets + hold_secs; time -> duration_mins (+ intensity if you can name a sensible starting setting). Never prescribe sets and reps for a timed item.
 - MODALITY items (ice, heat, TENS, compression, elevation) are care, not exercise. Include them only when the stage of recovery genuinely calls for one; they are always dosage_type=time. Do not pad a plan with them.
+- SEQUENCE the care you do include: heat and warm-up modalities get care_timing "before" (loosen first), ice and compression get "after" (settle what the work stirred up). Leave genuinely-anytime care (elevation, TENS as needed) untimed.
+- The patient's home equipment list is what they actually own. Prescribe home care only around what's there. When one cheap item they lack (an ice pack, a resistance band) would unlock meaningfully better home care, put it in equipment_suggestions with a reason — never silently assume they'll buy it, and never suggest gym machinery.
+- If the intake carries red-flag screening answers or anything else a PT should verify in the room before loading, say so in pt_note (PT-only). You screen nothing yourself and you do not diagnose — you point, the PT decides.
 - Daily frequency only for gentle early-phase work.
 - Each rationale is ONE plain-English sentence a patient can understand.`;
 
@@ -334,6 +448,9 @@ Rules:
 - Propose 6-10 items total. Items marked home_eligible=false can only be location "office".
 - Dosage follows each item's dosage_type, and nothing else: reps -> sets + reps; hold -> sets + hold_secs; time -> duration_mins (+ intensity). Never prescribe sets and reps for a timed item.
 - MODALITY items (ice, heat, TENS, compression, elevation) are care, not exercise. Carry one forward or add one only when the stage of recovery calls for it.
+- SEQUENCE the care you include: heat/warm-up modalities get care_timing "before", ice and compression get "after". Leave genuinely-anytime care untimed. The adherence record tells you whether the care is being used — care that's never logged is a candidate to drop, same as an exercise.
+- The patient's home equipment list is what they actually own. When one cheap missing item would unlock meaningfully better home care at THIS stage, put it in equipment_suggestions with a reason. Never suggest gym machinery.
+- If anything in the record should be verified in the room before progressing (screening answers, a pain trend that contradicts the request), say so in pt_note (PT-only). You point, the PT decides.
 - Each rationale is ONE plain-English sentence a patient can understand.
 - Do not diagnose, and do not comment on prognosis or on whether the patient is doing well. Propose the plan; the PT reads the evidence themselves.`;
 
@@ -367,13 +484,81 @@ function progressSection(progress: ProgressContext): string {
   return lines.join("\n");
 }
 
+/** The INTAKE block. Only populated fields render — a sparse intake reads as
+ *  a short section, not twenty "not given" lines the model must wade through.
+ *  Condition, regions, onset, pain, restrictions always render (their absence
+ *  is itself information the model should see stated). */
+export function formatIntake(intake: IntakeForPrompt): string {
+  const lines: string[] = ["INTAKE"];
+  const push = (label: string, v: string | null | undefined) => {
+    if (v) lines.push(`${label}: ${v}`);
+  };
+
+  push(
+    "Condition",
+    intake.side && intake.side !== "na"
+      ? `${intake.condition} (${intake.side} side)`
+      : intake.condition,
+  );
+  push("Patient age", intake.age != null ? String(intake.age) : null);
+  lines.push(`Body regions: ${intake.body_regions.join(", ")}`);
+  const onsetBits = [
+    intake.onset_date ?? "date not given",
+    intake.onset_kind ?? null,
+    intake.trajectory ? `course: ${intake.trajectory}` : null,
+    intake.had_before === true ? "recurrent (had this before)" : null,
+  ].filter(Boolean);
+  lines.push(`Surgery/onset: ${onsetBits.join(" · ")}`);
+  push("Mechanism", intake.mechanism);
+  const pains = [
+    `now ${intake.pain_now ?? "?"}/10`,
+    intake.pain_avg != null ? `avg ${intake.pain_avg}/10` : null,
+    `worst ${intake.pain_worst ?? "?"}/10`,
+  ].filter(Boolean);
+  lines.push(`Pain: ${pains.join(" · ")}`);
+  const pattern = [
+    intake.pain_pattern ?? null,
+    intake.worst_time ? `worst in the ${intake.worst_time}` : null,
+    intake.night_pain === true ? "wakes them at night" : null,
+  ].filter(Boolean);
+  push("Pain pattern", pattern.length ? pattern.join(" · ") : null);
+  push("Aggravated by", intake.aggravators);
+  push("Eased by", intake.easers);
+  if (intake.limited_activities?.length) {
+    lines.push(
+      "Limited activities, patient-rated 0-10 today (these are the goals the plan serves):",
+    );
+    for (const a of intake.limited_activities) {
+      lines.push(`  - ${a.activity}: ${a.rating}/10`);
+    }
+  }
+  push("Assistive device", intake.assistive_device);
+  push("Goals", intake.goals || "not given");
+  push("Comorbidities", intake.conditions?.length ? intake.conditions.join(", ") : null);
+  if (intake.red_flags?.length) {
+    lines.push(
+      `RED-FLAG SCREEN (positive answers — flag for the PT in pt_note, stay conservative): ${intake.red_flags.join(", ")}`,
+    );
+  }
+  push("Medications", intake.medications);
+  push("Surgical history", intake.surgeries);
+  push("Imaging", intake.imaging);
+  push("Prior treatment", intake.prior_treatment);
+  push("Occupation", intake.occupation);
+  push("Normal activity level", intake.activity_level);
+  lines.push(`Restrictions/precautions: ${intake.restrictions || "none stated"}`);
+  push("Narrative", intake.narrative);
+  return lines.join("\n");
+}
+
 async function litheDraft(
   intake: IntakeForPrompt,
   equipmentNames: string[],
+  catalog: { slug: string; name: string }[],
   slice: SliceExercise[],
   jwt: string,
   progress?: ProgressContext,
-): Promise<{ raw: unknown[]; model: string }> {
+): Promise<{ raw: unknown[]; model: string; rawSuggestions: unknown; ptNote: string | null }> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const coreUrl = (
     process.env.LITHE_CORE_INTERNAL_URL ||
@@ -391,16 +576,12 @@ async function litheDraft(
     )
     .join("\n");
 
-  const user = `${progress ? `${progressSection(progress)}\n\n` : ""}INTAKE
-Condition: ${intake.condition}
-Body regions: ${intake.body_regions.join(", ")}
-Surgery/onset date: ${intake.onset_date ?? "not given"}
-Pain now: ${intake.pain_now ?? "?"}/10 · worst: ${intake.pain_worst ?? "?"}/10
-Goals: ${intake.goals || "not given"}
-Restrictions/precautions: ${intake.restrictions || "none stated"}
-Narrative: ${intake.narrative || "none"}
+  const user = `${progress ? `${progressSection(progress)}\n\n` : ""}${formatIntake(intake)}
 
 PATIENT HOME EQUIPMENT: ${equipmentNames.join(", ") || "none recorded"} (plus assumed household: wall, chair, towel, a step)
+
+EQUIPMENT CATALOG (slug | name) — for equipment_suggestions only:
+${catalog.map((c) => `${c.slug} | ${c.name}`).join("\n")}
 
 LIBRARY (id | name | kind | dosage_type | difficulty | position | regions | equipment | home_eligible)
 ${libraryLines}
@@ -423,9 +604,17 @@ ${progress ? "Propose the REVISED plan via the propose_plan tool." : "Propose th
     // route logs an error instead of minting a silent empty draft.
     throw new Error(`no tool_use block in response (stop_reason: ${res.stop_reason})`);
   }
-  const items = (toolUse.input as { items?: unknown }).items;
-  const raw = Array.isArray(items) ? items : [];
-  return { raw, model };
+  const input = toolUse.input as {
+    items?: unknown;
+    equipment_suggestions?: unknown;
+    pt_note?: unknown;
+  };
+  const raw = Array.isArray(input.items) ? input.items : [];
+  const ptNote =
+    typeof input.pt_note === "string" && input.pt_note.trim()
+      ? input.pt_note.trim().slice(0, 500)
+      : null;
+  return { raw, model, rawSuggestions: input.equipment_suggestions, ptNote };
 }
 
 export async function draftPlan(args: {
@@ -448,25 +637,52 @@ export async function draftPlan(args: {
     progress?.current.map((c) => c.exerciseId) ?? [],
   );
 
-  const { rows: eq } = await pool.query<{ name: string }>(
-    `SELECT ec.name FROM patient_equipment pe
+  const { rows: eq } = await pool.query<{ slug: string; name: string }>(
+    `SELECT ec.slug, ec.name FROM patient_equipment pe
      JOIN equipment_catalog ec ON ec.id = pe.equipment_id
      WHERE pe.user_id = $1 ORDER BY ec.name`,
     [patientUserId],
   );
   const equipmentNames = eq.map((r) => r.name);
+  const ownedSlugs = new Set(eq.map((r) => r.slug));
+
+  // The whole catalog (minus household assumptions) — suggestions must name
+  // one of these slugs or they're dropped, same grounding rule as exercises.
+  const { rows: catalog } = await pool.query<{ slug: string; name: string }>(
+    `SELECT slug, name FROM equipment_catalog
+     WHERE slug <> ALL($1) ORDER BY name`,
+    [HOUSEHOLD_SLUGS],
+  );
 
   const mode = process.env.CARRYOVER_AI_MODE === "lithe" ? "lithe" : "fixture";
   let raw: unknown[];
   let model: string | null = null;
+  let rawSuggestions: unknown = null;
+  let aiNote: string | null = null;
   if (mode === "lithe") {
-    const out = await litheDraft(intake, equipmentNames, slice, jwt, progress);
+    const out = await litheDraft(intake, equipmentNames, catalog, slice, jwt, progress);
     raw = out.raw;
     model = out.model;
+    rawSuggestions = out.rawSuggestions;
+    aiNote = out.ptNote;
   } else {
     raw = progress ? fixtureRevamp(progress, intake, slice) : fixtureDraft(intake, slice);
+    // Mechanical, so the suggestion UI is testable offline: an unowned ice
+    // pack is suggested whenever the fixture drafted any cold care.
+    const draftedIds = new Set(
+      raw.map((r) => String((r as Record<string, unknown>).exercise_id)),
+    );
+    const coldCare = slice.some(
+      (e) => draftedIds.has(e.id) && e.kind === "modality" && fixtureTiming(e) === "after",
+    );
+    if (coldCare && !ownedSlugs.has("ice-pack")) {
+      rawSuggestions = [
+        { slug: "ice-pack", reason: "Lets you ice at home after each session." },
+      ];
+    }
   }
 
   const { items, dropped } = validateItems(raw, slice);
-  return { items, mode, model, droppedItems: dropped };
+  const equipmentSuggestions = validateEquipmentSuggestions(rawSuggestions, catalog, ownedSlugs);
+  return { items, mode, model, droppedItems: dropped, equipmentSuggestions, aiNote };
 }

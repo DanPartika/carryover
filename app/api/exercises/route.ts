@@ -34,8 +34,15 @@ export async function GET(req: NextRequest) {
   // see an exercise the draft can never pick (or worse, the reverse).
   where.push(visibleToViewerSql(arg(await viewerClinicIds(pool, user.id))));
 
+  // Name OR tags: "eccentric", "glutes", "stretching" are tag vocabulary the
+  // GIN index has carried since 0002 and no query surface ever read.
   const q = p.get("q")?.trim();
-  if (q) where.push(`e.name ILIKE ${arg(`%${q}%`)}`);
+  if (q) {
+    const like = arg(`%${q}%`);
+    where.push(
+      `(e.name ILIKE ${like} OR EXISTS (SELECT 1 FROM unnest(e.tags) t WHERE t ILIKE ${like}))`,
+    );
+  }
 
   const region = p.get("region");
   if (region) where.push(`${arg(region)} = ANY(e.body_regions)`);
@@ -135,10 +142,12 @@ export async function POST(req: NextRequest) {
   }
 
   const regions = (body.bodyRegions ?? []).filter((r) => BODY_REGIONS.includes(r));
-  if (regions.length === 0) {
+  if (regions.length === 0 && body.kind !== "modality") {
     // Not pedantry: the AI's library slice selects on body_regions, so a
     // region-less exercise is invisible to every draft ever made. Better to
     // refuse than to hand back an exercise that quietly never gets suggested.
+    // Modalities are exempt — you ice whatever hurts, and the slice includes
+    // them region-free (the seeded six all have body_regions = '{}').
     return NextResponse.json({ error: "pick at least one body region" }, { status: 400 });
   }
 
