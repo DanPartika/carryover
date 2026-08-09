@@ -1,0 +1,237 @@
+{
+  "_comment": "Shoulder corridor: rotator-cuff strain, post-op shoulder, early frozen-shoulder rehab. Instructions and art authored in-house for the Carryover seed library.",
+  "exercises": [
+    {
+      "key": "pendulum-swings",
+      "name": "Pendulum Swings",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "time",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "range-of-motion", "early-phase"],
+      "equipment": ["chair", "other"],
+      "instructions": [
+        "Lean forward and rest your good hand on a chair back or counter, letting the affected arm hang straight down, completely relaxed.",
+        "Shift your body weight in small circles so the hanging arm swings gently like a pendulum — the arm itself does no work.",
+        "Let the swing trace small circles both directions, then easy front-to-back and side-to-side lines.",
+        "Keep the motion small and pain-free; this is relaxed movement, not effort."
+      ]
+    },
+    {
+      "key": "er-isometric-doorframe",
+      "name": "External Rotation Isometric",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "isometric", "rotator-cuff", "early-phase", "unilateral"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand in a doorway with your elbow bent to a right angle and tucked against your side, forearm pointing forward.",
+        "Place the back of your wrist against the doorframe.",
+        "Press the wrist outward into the frame as if rotating the arm away from your belly — nothing should actually move.",
+        "Build to a firm but comfortable pressure, hold steady while breathing normally, then release slowly. Sharp pain means back off the effort."
+      ]
+    },
+    {
+      "key": "ir-isometric-doorframe",
+      "name": "Internal Rotation Isometric",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "isometric", "rotator-cuff", "early-phase", "unilateral"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand at the edge of a doorway with the affected side closest to the frame, elbow bent to a right angle and tucked against your ribs.",
+        "Place your palm against the doorframe, forearm pointing forward.",
+        "Press the palm into the frame as if turning your hand toward your belly — the arm should not actually move.",
+        "Build to a firm, comfortable pressure, hold while breathing normally, then ease off slowly. Keep the shoulder itself quiet and relaxed."
+      ]
+    },
+    {
+      "key": "scapular-squeeze",
+      "name": "Scapular Squeeze",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "isometric", "posture", "early-phase"],
+      "equipment": ["none"],
+      "instructions": [
+        "Sit tall with your arms relaxed at your sides.",
+        "Draw your shoulder blades back and down, as if tucking them into your back pockets.",
+        "Keep the shoulders away from the ears — this is a squeeze between the blades, not a shrug.",
+        "Hold the squeeze while breathing normally, then let everything go fully slack before the next one."
+      ]
+    },
+    {
+      "key": "band-external-rotation",
+      "name": "Band External Rotation",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "strengthening", "rotator-cuff", "unilateral"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Anchor a resistance band at elbow height and stand side-on so the band crosses in front of your belly, working elbow bent to a right angle and tucked to your side.",
+        "Optionally squeeze a small rolled towel between the elbow and your ribs to keep the elbow glued in place.",
+        "Keeping the elbow pinned, rotate the forearm outward away from your belly, like a gate swinging open.",
+        "Pause briefly, then return with control — the way back should be just as slow as the way out.",
+        "If the elbow drifts from your side or the shoulder hikes, the band is too heavy."
+      ]
+    },
+    {
+      "key": "band-row",
+      "name": "Band Row",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder", "spine"],
+      "tags": ["shoulder-rehab", "strengthening", "posture"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Anchor a resistance band at chest height around something sturdy and hold an end in each hand, arms reaching forward.",
+        "Stand tall and start the pull by drawing your shoulder blades together.",
+        "Pull the hands in toward your lower ribs, elbows brushing past your sides.",
+        "Keep the shoulders down away from the ears and the neck relaxed throughout.",
+        "Let the arms reach forward again slowly, allowing the blades to glide apart at the very end."
+      ]
+    },
+    {
+      "key": "wall-slide",
+      "name": "Wall Slide",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "range-of-motion", "posture"],
+      "equipment": ["wall", "towel"],
+      "instructions": [
+        "Stand facing a wall and rest both hands on it at shoulder height — a folded towel under the hands helps them glide.",
+        "Slide the hands upward along the wall, letting your body lean gently in as the arms rise.",
+        "Go only as high as stays comfortable; the shoulders should stay relaxed, not hiked toward the ears.",
+        "Slide back down to shoulder height with the same control."
+      ]
+    },
+    {
+      "key": "side-lying-external-rotation",
+      "name": "Side-Lying External Rotation",
+      "position": "side_lying",
+      "difficulty": 4,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "strengthening", "rotator-cuff", "unilateral", "eccentric"],
+      "equipment": ["dumbbell"],
+      "instructions": [
+        "Lie on your unaffected side with a light dumbbell in the top hand, top elbow bent to a right angle and resting on your ribs.",
+        "Place a small rolled towel between the elbow and your side to hold the arm in a friendly position.",
+        "Keeping the elbow pinned to the towel, rotate the forearm up toward the ceiling, like a gate swinging open.",
+        "Lower back down slowly — take more time on the way down than the way up.",
+        "Stop short of any pinching, and end the set if anything feels sharp — the range that stays smooth is the right range."
+      ]
+    },
+    {
+      "key": "sleeper-stretch",
+      "name": "Sleeper Stretch",
+      "position": "side_lying",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "stretch", "range-of-motion", "unilateral"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your affected side with that shoulder stacked directly beneath you and the arm out in front, elbow bent to a right angle, fingers pointing to the ceiling.",
+        "With the opposite hand, gently guide the back of the affected wrist down toward the floor.",
+        "Push only to a gentle stretch across the back of the shoulder — never into pinching pain at the front.",
+        "Hold there, breathing slowly, then release the pressure before rolling off the shoulder."
+      ]
+    },
+    {
+      "key": "doorway-pec-stretch",
+      "name": "Doorway Pec Stretch",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "stretch", "posture", "range-of-motion"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand in a doorway and place your forearm along the frame, elbow at shoulder height and bent to a right angle.",
+        "Step the same-side foot forward until you feel a gentle stretch across the front of the chest and shoulder.",
+        "Keep the ribs down and avoid arching the lower back — the stretch belongs in the chest, not the spine.",
+        "Hold, breathing easy, then step back to release."
+      ]
+    },
+    {
+      "key": "wall-pushup-plus",
+      "name": "Wall Push-Up Plus",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder"],
+      "tags": ["shoulder-rehab", "strengthening", "motor-control", "posture"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand facing a wall with your hands flat on it at shoulder height, feet a step back so your body makes one straight line.",
+        "Bend the elbows to lower your chest toward the wall slowly — the lowering is where the control lives.",
+        "Push back to arm's length, then keep going: spread the shoulder blades apart and push your upper back away from the wall. That extra push is the plus.",
+        "Keep the neck long and the body in one line; if the shoulders start to shrug or the low back sags, step closer to the wall."
+      ]
+    },
+    {
+      "key": "prone-t-raise",
+      "name": "Prone T Raise",
+      "position": "prone",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["shoulder", "spine"],
+      "tags": ["shoulder-rehab", "strengthening", "posture"],
+      "equipment": ["none", "towel"],
+      "instructions": [
+        "Lie face down with your arms out to the sides at shoulder level, thumbs pointing to the ceiling, forehead resting on the floor or a folded towel.",
+        "Set the shoulder blades back and down, then float both arms up off the floor.",
+        "Lift from between the shoulder blades, not by cranking the neck or arching the low back.",
+        "Pause at the top, then lower slowly until the arms rest again."
+      ]
+    }
+  ],
+  "progressions": [
+    {
+      "from": "pendulum-swings",
+      "to": "wall-slide",
+      "note": "Progress when the arm swings relaxed for a couple of minutes with pain at 2/10 or less."
+    },
+    {
+      "from": "wall-slide",
+      "to": "wall-pushup-plus",
+      "note": "Progress when the hands glide above shoulder height without shrugging and with no pain flare the next day."
+    },
+    {
+      "from": "pendulum-swings",
+      "to": "doorway-pec-stretch",
+      "note": "Add once a full session of swinging is pain-free and reaching to shoulder height stays at 3/10 or below."
+    },
+    {
+      "from": "er-isometric-doorframe",
+      "to": "band-external-rotation",
+      "note": "Progress when a firm press holds for the full count at 2/10 pain or less across several consecutive days."
+    },
+    {
+      "from": "band-external-rotation",
+      "to": "side-lying-external-rotation",
+      "note": "Progress when every repetition ends with the elbow still pinned to the side and any soreness clears by the next morning."
+    },
+    {
+      "from": "scapular-squeeze",
+      "to": "band-row",
+      "note": "Progress when the squeeze holds for the full count without the shoulders creeping up toward the ears."
+    },
+    {
+      "from": "band-row",
+      "to": "prone-t-raise",
+      "note": "Progress when the final repetitions of a set stay as smooth as the first, with the neck relaxed throughout."
+    }
+  ]
+}

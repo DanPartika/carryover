@@ -1,0 +1,209 @@
+{
+  "_comment": "Hip-core corridor — hip bursitis, gluteal tendinopathy, and post-hip-replacement strengthening; builds around glute-bridge, single-leg-bridge, and clamshell already seeded in the knee corridor. Authored in-house (original instruction text; exercise mechanics are facts, phrasing is ours).",
+  "exercises": [
+    {
+      "key": "isometric-hip-abduction",
+      "name": "Isometric Hip Abduction (Wall Press)",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "isometric", "early-phase", "glutes"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand tall side-on to a wall with your working leg closest to it, fingertips resting on the wall for balance.",
+        "Keep the working leg straight with toes facing forward, and press the outer edge of that foot firmly into the base of the wall.",
+        "Build the push up gradually to a strong but comfortable effort — nothing moves, the outer hip simply switches on. Ease off if pain sharpens.",
+        "Hold the press while breathing normally, then release just as gradually."
+      ]
+    },
+    {
+      "key": "side-lying-hip-abduction",
+      "name": "Side-Lying Hip Abduction",
+      "position": "side_lying",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "early-phase"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your side with the working leg on top, body in one straight line, bottom knee softly bent for stability.",
+        "Point the top leg's toes slightly toward the floor and keep the leg in line with your trunk — drifting it forward hands the work to the wrong muscles.",
+        "Lift the top leg toward the ceiling about 45 degrees, moving from the hip while the pelvis stays stacked and still.",
+        "Lower slowly with control. If your waist hikes or the pelvis rolls back, shrink the range."
+      ]
+    },
+    {
+      "key": "standing-hip-abduction",
+      "name": "Standing Hip Abduction",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "functional"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Stand tall beside a counter or chair back, resting one hand on it for balance.",
+        "Shift your weight fully onto the supporting leg without leaning your trunk toward it.",
+        "Sweep the working leg straight out to the side, toes facing forward, keeping your body upright.",
+        "Pause, then bring the leg back with control — leaning the trunk is the most common cheat, and the standing hip is working just as hard."
+      ]
+    },
+    {
+      "key": "fire-hydrant",
+      "name": "Fire Hydrant",
+      "position": "quadruped",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["hip", "core"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "hip-stability"],
+      "equipment": ["none"],
+      "instructions": [
+        "Start on hands and knees with hands under shoulders, knees under hips, and back flat.",
+        "Keeping the knee bent, lift one knee out to the side — like a dog at a hydrant — only as far as the pelvis stays level.",
+        "Move from the hip; the lower back and shoulders stay quiet.",
+        "Lower slowly to the start. If the trunk twists, shrink the lift."
+      ]
+    },
+    {
+      "key": "banded-lateral-walk",
+      "name": "Banded Lateral Walk",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "time",
+      "body_regions": ["hip", "knee"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "banded", "functional"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Loop a resistance band around both legs just above the knees and stand with feet hip-width apart so the band is lightly taut.",
+        "Sink into a shallow athletic stance — hips back, knees soft, chest up.",
+        "Step sideways with the lead foot, then follow part-way with the trailing foot so the band never goes slack.",
+        "Keep the knees tracking over the toes and stay at one height — no bobbing up and down.",
+        "Lead with the other leg to travel back the same way."
+      ]
+    },
+    {
+      "key": "prone-hip-extension",
+      "name": "Prone Hip Extension",
+      "position": "prone",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["hip", "core"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "posterior-chain"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie face down with both legs straight and your forehead resting on your hands.",
+        "Gently draw in the lower belly, then squeeze the buttock of the working side before anything moves.",
+        "Keeping the knee straight, lift that leg a few inches off the floor — the lift comes from the buttock, not the lower back.",
+        "Pause at the top, then lower slowly. If the low back arches or pinches, lift lower."
+      ]
+    },
+    {
+      "key": "standing-hip-extension",
+      "name": "Standing Hip Extension",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "strengthening", "glutes", "functional"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Stand tall facing a counter or chair back, both hands resting on it.",
+        "Squeeze the buttock first, then sweep the working leg straight behind you with the knee straight.",
+        "Move only from the hip — stop the sweep before the lower back arches or the trunk tips forward.",
+        "Return with control and stand tall between repetitions."
+      ]
+    },
+    {
+      "key": "figure-4-stretch",
+      "name": "Figure-4 Stretch",
+      "position": "supine",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "stretch", "range-of-motion", "glutes"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with both knees bent and feet flat.",
+        "Cross the ankle of the stretch-side leg over the opposite thigh and let that knee fall comfortably outward — the legs form a figure 4.",
+        "Reach through the gap, clasp behind the supporting thigh, and draw it gently toward your chest until you feel a stretch deep in the buttock.",
+        "Keep your head and shoulders heavy on the floor, breathe slowly, and hold — a stretch, never a sharp pinch.",
+        "If you have had a hip replacement, check with your therapist before adding this position."
+      ]
+    },
+    {
+      "key": "standing-hip-flexor-stretch",
+      "name": "Standing Hip-Flexor Stretch",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["hip"],
+      "tags": ["hip-rehab", "stretch", "range-of-motion", "posture"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Stand in a split stance with the stretch-side foot well behind you, holding a chair back if you need balance.",
+        "Tuck your tailbone under and squeeze the rear-side buttock — the front of that hip should already begin to lengthen.",
+        "Keeping the trunk upright, shift your weight gently forward onto the front leg until you feel a stretch across the front of the rear hip.",
+        "Hold there and breathe — if the lower back arches, the stretch has moved to the wrong place; re-tuck and ease off."
+      ]
+    },
+    {
+      "key": "single-leg-stance",
+      "name": "Single-Leg Stance",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "time",
+      "body_regions": ["hip", "ankle_foot"],
+      "tags": ["hip-rehab", "balance", "unilateral", "hip-stability"],
+      "equipment": ["none", "chair", "balance-pad"],
+      "instructions": [
+        "Stand tall beside a counter or chair back with fingertips resting lightly on it.",
+        "Shift your weight onto one leg and lift the other foot just clear of the floor.",
+        "Keep the pelvis level and the standing knee soft — no sagging into the outer hip.",
+        "As you steady, hover the fingertips just off the support; progress later by standing on a balance pad."
+      ]
+    },
+    {
+      "key": "banded-march",
+      "name": "Standing March with Band",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["hip", "core"],
+      "tags": ["hip-rehab", "strengthening", "balance", "banded"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Loop a small resistance band around both feet and stand tall, a counter or chair back within reach.",
+        "March one knee up toward hip height against the band, keeping the trunk tall — no leaning back.",
+        "Keep the standing-side pelvis steady; it should not dip or sway as the knee rises.",
+        "Lower that foot with control and march the other side, alternating in a slow, deliberate rhythm."
+      ]
+    },
+    {
+      "key": "pelvic-drop",
+      "name": "Pelvic Drop",
+      "position": "standing",
+      "difficulty": 4,
+      "dosage_type": "reps",
+      "body_regions": ["hip", "core"],
+      "tags": ["hip-rehab", "eccentric", "unilateral", "advanced", "hip-stability"],
+      "equipment": ["step", "wall"],
+      "instructions": [
+        "Stand sideways on a low step on your working leg, the other foot hanging free off the edge — steady yourself on a wall or rail if needed.",
+        "Keeping both knees straight, let the free-side pelvis drop slowly so that foot lowers toward the floor — stop if pain sharpens over the standing-side outer hip.",
+        "Push through the standing hip to hike the pelvis level again, lifting the free foot back up.",
+        "All the movement comes from the pelvis — the standing-leg outer hip does the work, and the slow drop matters as much as the lift."
+      ]
+    }
+  ],
+  "progressions": [
+    { "from": "isometric-hip-abduction", "to": "side-lying-hip-abduction", "note": "Move from holds to lifting repetitions once a long, firm wall press causes no flare-up by the next morning." },
+    { "from": "side-lying-hip-abduction", "to": "standing-hip-abduction", "note": "Progress upright when you can lift through the full range with the pelvis stacked and no next-day outer-hip soreness." },
+    { "from": "standing-hip-abduction", "to": "banded-lateral-walk", "note": "Add band resistance once the standing sweep stays smooth on both sides with the trunk tall and the hand only hovering." },
+    { "from": "fire-hydrant", "to": "banded-lateral-walk", "note": "Progress to upright banded work when the pelvis stays level through the full lift on both sides." },
+    { "from": "prone-hip-extension", "to": "standing-hip-extension", "note": "Move upright once the straight leg clears the floor without the lower back arching." },
+    { "from": "single-leg-stance", "to": "banded-march", "note": "Add the marching band once you can balance hands-free for the full prescribed time with a level pelvis." },
+    { "from": "single-leg-stance", "to": "pelvic-drop", "note": "Progress to step work when hands-free stance is steady and the pelvis holds level for the whole time." },
+    { "from": "banded-lateral-walk", "to": "pelvic-drop", "note": "Progress when full-width walks keep constant band tension and the knees track over the toes without wobble." }
+  ]
+}

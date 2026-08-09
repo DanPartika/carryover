@@ -1,0 +1,191 @@
+{
+  "_comment": "Neck corridor — mechanical neck pain / posture / post-whiplash gentle rehab; authored in-house (original instruction text; exercise mechanics are facts, phrasing is ours). Dan + his PT review, correct, and expand.",
+  "exercises": [
+    {
+      "key": "seated-chin-tuck",
+      "name": "Seated Chin Tuck",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["neck"],
+      "tags": ["neck-rehab", "posture", "early-phase", "range-of-motion"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit tall in a chair with your shoulders relaxed and your gaze level.",
+        "Glide your head straight back, drawing your chin in to make a gentle double chin — the nose keeps pointing forward, not down.",
+        "Feel a light lengthening at the base of the skull; the movement is small, and it should never be forced or painful.",
+        "Hold the tucked position while breathing normally, then release slowly back to neutral."
+      ]
+    },
+    {
+      "key": "supine-chin-tuck",
+      "name": "Supine Chin Tuck",
+      "position": "supine",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["neck"],
+      "tags": ["neck-rehab", "early-phase", "posture", "strengthening"],
+      "equipment": ["none", "towel"],
+      "instructions": [
+        "Lie on your back with your knees bent and, if it is more comfortable, a small folded towel under your head.",
+        "Nod your chin gently toward your throat, as if giving a slow, tiny 'yes', flattening the back of your neck toward the floor.",
+        "Keep the big muscles at the front of the neck soft — the work comes from small, deep muscles, so the effort should feel subtle.",
+        "Hold the nod without holding your breath, then let the head rest completely."
+      ]
+    },
+    {
+      "key": "chin-tuck-head-lift",
+      "name": "Chin Tuck with Head Lift",
+      "position": "supine",
+      "difficulty": 4,
+      "dosage_type": "hold",
+      "body_regions": ["neck"],
+      "tags": ["neck-rehab", "strengthening", "isometric", "endurance"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with your knees bent and no pillow under your head.",
+        "Do your gentle chin nod first, and keep it for the whole exercise — the chin never juts toward the ceiling.",
+        "Keeping the nod, lift your head just a finger-width off the floor, as if sliding it out from under a sheet of paper.",
+        "Hold steady while breathing normally, then lower with control; end the set the moment the chin starts to poke upward or you feel any dizziness."
+      ]
+    },
+    {
+      "key": "neck-side-press",
+      "name": "Isometric Neck Side Press",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["neck"],
+      "tags": ["neck-rehab", "isometric", "strengthening", "unilateral"],
+      "equipment": ["none"],
+      "instructions": [
+        "Sit tall with your chin gently tucked and your head in a comfortable neutral position.",
+        "Place your palm flat against the side of your head, just above the ear.",
+        "Press your head sideways into the palm as if tipping your ear toward that shoulder — but let nothing actually move; the hand matches the push exactly.",
+        "Build the pressure gradually to a firm but comfortable effort, hold while breathing steadily, then ease off just as gradually before switching sides."
+      ]
+    },
+    {
+      "key": "neck-flexion-extension-press",
+      "name": "Isometric Neck Flexion-Extension Press",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["neck"],
+      "tags": ["neck-rehab", "isometric", "strengthening"],
+      "equipment": ["none"],
+      "instructions": [
+        "Sit tall with your chin gently tucked and your gaze level.",
+        "Place your palm on your forehead and press your head forward into it without letting the head move.",
+        "Then lace your fingers behind your head and press straight back into them, again without movement.",
+        "Build each press slowly and release just as slowly — sudden starts and stops are what irritate a healing neck."
+      ]
+    },
+    {
+      "key": "upper-trap-stretch",
+      "name": "Upper-Trapezius Stretch",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["neck", "shoulder"],
+      "tags": ["neck-rehab", "stretch", "range-of-motion", "unilateral"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit tall and grasp the edge of the chair seat with the hand on the side you want to stretch — this anchors that shoulder down.",
+        "Let your head tip away from the anchored side, the ear sinking toward the opposite shoulder.",
+        "Rest your free hand lightly on the side of your head for a touch of extra weight, but never pull.",
+        "Settle into a mild pulling feeling along the side of the neck, hold and breathe, then lift the head back upright before switching sides."
+      ]
+    },
+    {
+      "key": "levator-scap-stretch",
+      "name": "Levator-Scapulae Stretch",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["neck", "shoulder"],
+      "tags": ["neck-rehab", "stretch", "range-of-motion", "unilateral"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit tall and anchor the side you want to stretch by grasping the chair seat with that hand.",
+        "Turn your head about halfway away from the anchored side, then look down as if checking the opposite armpit.",
+        "Rest your free hand lightly on the back of your head, letting its weight guide the stretch — guide, never yank.",
+        "Hold where you feel a comfortable pull from the top corner of the shoulder blade up into the back of the neck, then release slowly and switch sides."
+      ]
+    },
+    {
+      "key": "scapular-retraction",
+      "name": "Seated Scapular Retraction",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["neck", "shoulder"],
+      "tags": ["neck-rehab", "posture", "strengthening", "early-phase"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit tall toward the front half of the chair with your arms relaxed at your sides.",
+        "Draw your shoulder blades back and down, as if tucking them into your back pockets.",
+        "Keep the shoulders away from the ears and the chin gently tucked — the squeeze lives between the shoulder blades, not up in the neck.",
+        "Hold the squeeze briefly, then let the blades glide fully apart before the next repetition."
+      ]
+    },
+    {
+      "key": "thoracic-extension-chair",
+      "name": "Thoracic Extension over Chair",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["neck", "spine"],
+      "tags": ["neck-rehab", "range-of-motion", "posture"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit in a chair whose backrest ends around the middle of your back, feet flat on the floor.",
+        "Support your head by lacing your fingers behind it, elbows pointing forward.",
+        "Lean back over the top edge of the backrest, arching your upper back while the lower back stays quiet.",
+        "Return to sitting tall between repetitions; if you feel pinching, arch a little less far, and if you feel light-headed, stop and rest."
+      ]
+    },
+    {
+      "key": "wall-angel",
+      "name": "Wall Angel",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["neck", "shoulder", "spine"],
+      "tags": ["neck-rehab", "posture", "range-of-motion", "strengthening"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand with your heels a few inches from a wall and lean back so your buttocks, upper back, and the back of your head all rest against it, chin gently tucked.",
+        "Raise your arms into a goalpost shape, working to keep the elbows and the backs of the wrists against the wall.",
+        "Slide the arms slowly up the wall as far as they will go without anything peeling away, then slide back down to the goalpost.",
+        "Losing contact is the signal you have reached today's range — work just inside it rather than forcing through."
+      ]
+    },
+    {
+      "key": "seated-band-row",
+      "name": "Seated Band Row",
+      "position": "seated",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["neck", "shoulder"],
+      "tags": ["neck-rehab", "strengthening", "posture", "eccentric"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Sit on the floor with your legs out in front, knees soft, and loop the middle of a resistance band around the arches of both feet, checking that it sits securely and cannot slip off.",
+        "Hold one end in each hand, sit tall, and tuck your chin gently so your head stacks over your shoulders.",
+        "Pull the band toward the sides of your lower ribs, letting the shoulder blades lead by drawing back and down.",
+        "Pause, then let the band draw your arms slowly forward — the return should take longer than the pull, and any sharp pain is the signal to stop for the day."
+      ]
+    }
+  ],
+  "progressions": [
+    { "from": "seated-chin-tuck", "to": "supine-chin-tuck", "note": "Progress once you can repeat a ten-second seated tuck with the surface muscles at the front of the neck staying soft." },
+    { "from": "supine-chin-tuck", "to": "chin-tuck-head-lift", "note": "Progress when ten-second supine nods stay steady and symptom-free with no chin jut on any repetition." },
+    { "from": "neck-side-press", "to": "scapular-retraction", "note": "Add posture work once a five-second press at firm effort builds and releases smoothly on both sides." },
+    { "from": "neck-flexion-extension-press", "to": "scapular-retraction", "note": "Move on when both directions tolerate a slow five-second build and release without symptoms spreading toward the shoulder or arm." },
+    { "from": "scapular-retraction", "to": "wall-angel", "note": "Progress when every squeeze holds through a full breath with the shoulders staying down away from the ears." },
+    { "from": "scapular-retraction", "to": "seated-band-row", "note": "Add band resistance once unloaded squeezes feel effortless through a full set and sitting posture no longer sags between repetitions." },
+    { "from": "thoracic-extension-chair", "to": "wall-angel", "note": "Progress once you can arch over the backrest through a comfortable range with no pinching at the end of the motion." },
+    { "from": "upper-trap-stretch", "to": "levator-scap-stretch", "note": "Add the angled version once the straight side-bend gives only a mild pull that fades within a minute of releasing." }
+  ]
+}

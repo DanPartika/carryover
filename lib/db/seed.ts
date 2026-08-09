@@ -2,11 +2,14 @@
 // migrations in instrumentation.ts). Two sources:
 //   1. free-exercise-db (The Unlicense / public domain, 873 records) — vendored
 //      JSON at db/seeds/free-exercise-db.json; images hotlink the upstream repo.
-//   2. knee-core.json — the in-house authored knee-rehab corridor with
-//      progression edges (no open dataset has these; PRD §2).
+//   2. db/seeds/corridors/*.json — the in-house authored rehab corridors with
+//      progression edges (no open dataset has these; PRD §2). One file per
+//      region; knee-core was the first, and the others follow its shape.
+// Authored rows get their art by convention: public/exercise-art/<key>.svg
+// existing at boot IS the image (owned line art, served by the app itself).
 // Idempotency: skip-if-counted for the bulk import, ON CONFLICT for the rest.
 
-import { readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Pool } from "pg";
 
@@ -162,26 +165,48 @@ async function seedFreeExerciseDb(pool: Pool, bySlug: Map<string, string>): Prom
   return inserted;
 }
 
-type KneeCore = {
-  exercises: {
-    key: string;
-    name: string;
-    position: string;
-    difficulty: number;
-    body_regions: string[];
-    tags: string[];
-    equipment: string[];
-    instructions: string[];
-  }[];
+type CorridorExercise = {
+  key: string;
+  name: string;
+  position: string;
+  difficulty: number;
+  /** Absent in the original knee-core file; the DB default ('reps') covers it. */
+  dosage_type?: "reps" | "hold" | "time";
+  body_regions: string[];
+  tags: string[];
+  equipment: string[];
+  instructions: string[];
+};
+
+type Corridor = {
+  exercises: CorridorExercise[];
   progressions: { from: string; to: string; note: string }[];
 };
 
-async function seedKneeCore(pool: Pool, bySlug: Map<string, string>): Promise<number> {
-  const raw = await readFile(path.join(process.cwd(), "db", "seeds", "knee-core.json"), "utf8");
-  const core = JSON.parse(raw) as KneeCore;
+const ART_DIR = path.join(process.cwd(), "public", "exercise-art");
+
+/** Owned line art, by convention: a file at public/exercise-art/<key>.svg is
+ *  the exercise's image. Stored app-relative — the renderer prefixes the base
+ *  path — so the same row works in dev ("") and under the prod gateway. */
+async function artImagesFor(key: string): Promise<string> {
+  try {
+    await access(path.join(ART_DIR, `${key}.svg`));
+    return JSON.stringify([`/exercise-art/${key}.svg`]);
+  } catch {
+    return "[]";
+  }
+}
+
+async function seedCorridor(
+  pool: Pool,
+  file: string,
+  bySlug: Map<string, string>,
+): Promise<number> {
+  const raw = await readFile(file, "utf8");
+  const core = JSON.parse(raw) as Corridor;
 
   const idByKey = new Map<string, string>();
-  let inserted = 0;
+  let upserted = 0;
 
   for (const e of core.exercises) {
     const {
@@ -189,9 +214,20 @@ async function seedKneeCore(pool: Pool, bySlug: Map<string, string>): Promise<nu
     } = await pool.query<{ id: string }>(
       `INSERT INTO exercises
          (source, source_key, name, instructions, body_regions, position, difficulty,
-          tags, images, license, license_author, source_url)
-       VALUES ('carryover',$1,$2,$3,$4,$5,$6,$7,'[]',$8,$9,$10)
-       ON CONFLICT (source, source_key) DO UPDATE SET name = EXCLUDED.name
+          dosage_type, tags, images, license, license_author, source_url)
+       VALUES ('carryover',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (source, source_key) DO UPDATE
+         -- Authored rows aren't editable in-app (the composer 403s on
+         -- built-ins), so re-asserting the seed is safe and is how existing
+         -- installs pick up text fixes and newly added art.
+         SET name = EXCLUDED.name,
+             instructions = EXCLUDED.instructions,
+             body_regions = EXCLUDED.body_regions,
+             position = EXCLUDED.position,
+             difficulty = EXCLUDED.difficulty,
+             dosage_type = EXCLUDED.dosage_type,
+             tags = EXCLUDED.tags,
+             images = EXCLUDED.images
        RETURNING id`,
       [
         e.key,
@@ -200,15 +236,26 @@ async function seedKneeCore(pool: Pool, bySlug: Map<string, string>): Promise<nu
         e.body_regions,
         e.position,
         e.difficulty,
+        e.dosage_type ?? "reps",
         e.tags,
+        await artImagesFor(e.key),
         "Carryover original (authored in-house)",
         "Carryover",
         null,
       ],
     );
     idByKey.set(e.key, row.id);
-    inserted++;
+    upserted++;
     await linkEquipment(pool, row.id, e.equipment, bySlug);
+    // The seed is authoritative for its own rows' equipment: a slug removed
+    // from the JSON must also leave the DB, or home-eligibility keeps honoring
+    // a link the corridor no longer claims (its semantics are ANY-of).
+    await pool.query(
+      `DELETE FROM exercise_equipment ee USING equipment_catalog ec
+       WHERE ee.exercise_id = $1 AND ec.id = ee.equipment_id
+         AND NOT (ec.slug = ANY($2))`,
+      [row.id, e.equipment],
+    );
   }
 
   for (const p of core.progressions) {
@@ -221,12 +268,35 @@ async function seedKneeCore(pool: Pool, bySlug: Map<string, string>): Promise<nu
       [from, to, p.note],
     );
   }
-  return inserted;
+  return upserted;
+}
+
+async function seedCorridors(pool: Pool, bySlug: Map<string, string>): Promise<number> {
+  const dir = path.join(process.cwd(), "db", "seeds", "corridors");
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+  let total = 0;
+  for (const f of files) total += await seedCorridor(pool, path.join(dir, f), bySlug);
+  return total;
+}
+
+/** The six care modalities were seeded by migration 0009, not by a corridor
+ *  file — their art rides the same filename convention. */
+async function seedModalityArt(pool: Pool): Promise<void> {
+  const { rows } = await pool.query<{ id: string; source_key: string }>(
+    "SELECT id, source_key FROM exercises WHERE source = 'carryover' AND kind = 'modality'",
+  );
+  for (const r of rows) {
+    await pool.query("UPDATE exercises SET images = $2::jsonb WHERE id = $1", [
+      r.id,
+      await artImagesFor(r.source_key),
+    ]);
+  }
 }
 
 export async function seedLibrary(pool: Pool): Promise<{ imported: number; core: number }> {
   const bySlug = await equipmentIdBySlug(pool);
   const imported = await seedFreeExerciseDb(pool, bySlug);
-  const core = await seedKneeCore(pool, bySlug);
+  const core = await seedCorridors(pool, bySlug);
+  await seedModalityArt(pool);
   return { imported, core };
 }

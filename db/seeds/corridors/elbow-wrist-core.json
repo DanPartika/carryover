@@ -1,0 +1,207 @@
+{
+  "_comment": "Elbow-wrist tendinopathy corridor (tennis/golfer's elbow + wrist): stretch -> isometric -> loaded -> eccentric ladder; original instruction text authored in-house for Carryover.",
+  "exercises": [
+    {
+      "key": "wrist-extensor-stretch",
+      "name": "Wrist Extensor Stretch",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "stretch", "early-phase", "range-of-motion"],
+      "equipment": ["none"],
+      "instructions": [
+        "Stand tall and reach your affected arm straight out in front, palm facing down.",
+        "Keep the elbow fully straight, then use your other hand to gently bend the wrist so the fingers point toward the floor.",
+        "Angle the hand gently toward its little-finger side until you feel a comfortable pull along the top of the forearm — a stretch, never a sharp pain.",
+        "Hold steady without bouncing, then release slowly."
+      ]
+    },
+    {
+      "key": "wrist-flexor-stretch",
+      "name": "Wrist Flexor Stretch",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "stretch", "early-phase", "range-of-motion"],
+      "equipment": ["none"],
+      "instructions": [
+        "Stand tall and reach your affected arm straight out in front, palm facing up, fingers pointing away from you.",
+        "Keep the elbow straight and use your other hand to draw the fingers back toward your body.",
+        "Feel the stretch along the inside of the forearm, from the wrist toward the elbow — ease off if anything pinches or tingles into the hand.",
+        "Hold the position quietly, then release with control."
+      ]
+    },
+    {
+      "key": "isometric-wrist-extension",
+      "name": "Isometric Wrist Extension",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "isometric", "early-phase", "strengthening"],
+      "equipment": ["none"],
+      "instructions": [
+        "Sit with your forearm resting along your thigh, palm down, hand and wrist just past the knee.",
+        "Place your other hand flat on top of the knuckles.",
+        "Try to lift the back of your hand toward the ceiling while the top hand blocks any movement — push at an effort that feels firm but stays comfortable at the elbow.",
+        "Keep breathing normally through the hold, then relax completely."
+      ]
+    },
+    {
+      "key": "grip-squeeze",
+      "name": "Towel Grip Squeeze",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "isometric", "strengthening", "grip", "early-phase"],
+      "equipment": ["towel"],
+      "instructions": [
+        "Sit tall and hold a small rolled towel in your affected hand, elbow bent and tucked at your side.",
+        "Squeeze the towel steadily, as if wringing water out with your fist alone.",
+        "Build to a firm effort that does not provoke sharp elbow pain, keeping the wrist in a straight, neutral line.",
+        "Hold the squeeze, then let the hand fully soften before the next one."
+      ]
+    },
+    {
+      "key": "towel-wring",
+      "name": "Towel Wring",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "strengthening", "range-of-motion", "grip"],
+      "equipment": ["towel"],
+      "instructions": [
+        "Stand holding a rolled towel horizontally in front of you with both hands, elbows softly bent.",
+        "Twist the towel as if wringing out water — one hand turns forward while the other turns back.",
+        "Move slowly to the end of comfortable rotation, then reverse and twist the other way.",
+        "Keep the shoulders relaxed; the movement comes from the forearms, not from swinging the arms."
+      ]
+    },
+    {
+      "key": "pronation-supination",
+      "name": "Dumbbell Forearm Rotation",
+      "position": "seated",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "strengthening", "range-of-motion", "unilateral"],
+      "equipment": ["dumbbell"],
+      "instructions": [
+        "Sit with your forearm supported along your thigh, wrist just past the knee, holding a light dumbbell by one end so it points up like a hammer.",
+        "Slowly rotate the forearm until the palm faces up.",
+        "Reverse and rotate until the palm faces down, keeping the elbow still against your side and letting the weight's leverage do the work.",
+        "Stay slow and controlled in both directions; if pain builds at the elbow, shorten the arc."
+      ]
+    },
+    {
+      "key": "band-wrist-extension",
+      "name": "Band Wrist Extension",
+      "position": "seated",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "strengthening", "unilateral"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Sit with your forearm along your thigh, palm down, wrist just past the knee, and one end of a resistance band pinned under your foot.",
+        "Grip the other end of the band so it carries light tension in the start position.",
+        "Lift the back of your hand upward against the band as far as comfortable, keeping the forearm anchored on the thigh.",
+        "Lower back down slowly — the return should take longer than the lift."
+      ]
+    },
+    {
+      "key": "hammer-curl",
+      "name": "Seated Hammer Curl",
+      "position": "seated",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["elbow"],
+      "tags": ["elbow-rehab", "strengthening", "unilateral"],
+      "equipment": ["dumbbell"],
+      "instructions": [
+        "Sit tall holding a light dumbbell at your side, thumb pointing up so the weight stays vertical.",
+        "Keep the elbow tucked close to your ribs and curl the hand toward the shoulder.",
+        "Lower back down with control, finishing with the elbow fully straight each time.",
+        "Avoid swinging the trunk or shrugging the shoulder — the forearm does the work."
+      ]
+    },
+    {
+      "key": "eccentric-wrist-extension",
+      "name": "Eccentric Wrist Extension",
+      "position": "seated",
+      "difficulty": 4,
+      "dosage_type": "reps",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "eccentric", "strengthening", "unilateral"],
+      "equipment": ["dumbbell"],
+      "instructions": [
+        "Sit with your forearm along your thigh, palm down, holding a light dumbbell with the wrist just past the knee.",
+        "Use your free hand to help lift the back of the working hand up to the top position.",
+        "Take the helping hand away and lower the weight slowly on your own, letting the wrist bend down past neutral.",
+        "The slow lowering is the exercise — mild, familiar tendon soreness is acceptable, but sharp pain means lighten the load."
+      ]
+    },
+    {
+      "key": "eccentric-wrist-flexion",
+      "name": "Eccentric Wrist Flexion",
+      "position": "seated",
+      "difficulty": 4,
+      "dosage_type": "reps",
+      "body_regions": ["elbow", "wrist_hand"],
+      "tags": ["elbow-rehab", "eccentric", "strengthening", "unilateral"],
+      "equipment": ["dumbbell"],
+      "instructions": [
+        "Sit with your forearm along your thigh, palm up, holding a light dumbbell with the wrist just past the knee.",
+        "Use your free hand to help curl the working wrist up to the top position.",
+        "Remove the helping hand and lower the weight slowly, letting the wrist open all the way down.",
+        "Keep the forearm resting on the thigh throughout — only the wrist moves, and the way down stays slow. Mild, familiar tendon soreness is acceptable, but stop and lighten the load if the pain turns sharp."
+      ]
+    }
+  ],
+  "progressions": [
+    {
+      "from": "wrist-extensor-stretch",
+      "to": "isometric-wrist-extension",
+      "note": "Add isometric loading once the stretch is held at end range with pain no higher than 2/10 on three consecutive days."
+    },
+    {
+      "from": "isometric-wrist-extension",
+      "to": "band-wrist-extension",
+      "note": "Move to band work when a 45-second firm press stays at or below 3/10 pain in three straight sessions."
+    },
+    {
+      "from": "band-wrist-extension",
+      "to": "eccentric-wrist-extension",
+      "note": "Progress to eccentrics when a full band session produces no next-morning pain increase for a week."
+    },
+    {
+      "from": "wrist-flexor-stretch",
+      "to": "grip-squeeze",
+      "note": "Begin grip work once the stretch reaches a full comfortable range at 2/10 pain or less, with no tingling."
+    },
+    {
+      "from": "towel-wring",
+      "to": "eccentric-wrist-flexion",
+      "note": "Start eccentric flexor loading when full-range wrings stay at or below 2/10 at the inner elbow during and the morning after for a full week."
+    },
+    {
+      "from": "grip-squeeze",
+      "to": "towel-wring",
+      "note": "Add wringing once a firm squeeze is held 30 seconds without symptoms rising above baseline afterward."
+    },
+    {
+      "from": "towel-wring",
+      "to": "pronation-supination",
+      "note": "Load rotation with a dumbbell when full-range wrings in both directions stay under 3/10 during and after."
+    },
+    {
+      "from": "towel-wring",
+      "to": "hammer-curl",
+      "note": "Add the curl when a full set of wrings causes no pain above 2/10 during or the morning after."
+    }
+  ]
+}

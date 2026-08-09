@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
+import { imageFitClass, imageSrc } from "@/lib/media";
 
 type PlanItem = {
   id: string;
@@ -55,6 +56,7 @@ type SearchHit = {
   difficulty: number | null;
   dosageType: DosageType;
   kind: "exercise" | "modality";
+  image: string | null;
 };
 
 const QUICKADD_REGIONS = [
@@ -405,17 +407,27 @@ export default function VisitMode({
                         setSearch("");
                         setHits([]);
                       }}
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-raise"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-raise"
                     >
-                      {h.name}
-                      {h.kind === "modality" && (
-                        <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
-                          care
-                        </span>
-                      )}
-                      {h.difficulty && h.kind !== "modality" ? (
-                        <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
-                      ) : null}
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-raise">
+                        {imageSrc(h.image) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={imageSrc(h.image)!} alt="" className={imageFitClass(h.image)} />
+                        ) : (
+                          <span aria-hidden className="text-sm">🦵</span>
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        {h.name}
+                        {h.kind === "modality" && (
+                          <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                            care
+                          </span>
+                        )}
+                        {h.difficulty && h.kind !== "modality" ? (
+                          <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
+                        ) : null}
+                      </span>
                     </button>
                   </li>
                 ))}

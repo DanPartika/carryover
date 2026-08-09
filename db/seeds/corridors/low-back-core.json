@@ -1,0 +1,191 @@
+{
+  "_comment": "Low-back / core corridor — non-specific low-back pain and post-flare rehab, McGill- and McKenzie-informed; authored in-house (original instruction text; exercise mechanics are facts, phrasing is ours).",
+  "exercises": [
+    {
+      "key": "pelvic-tilt",
+      "name": "Pelvic Tilt",
+      "position": "supine",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["spine", "core"],
+      "tags": ["spine-rehab", "early-phase", "range-of-motion", "posture", "motor-control"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with both knees bent and feet flat on the floor, arms resting at your sides.",
+        "Gently tighten your abdominals to roll the pelvis back, flattening the small of your back toward the floor.",
+        "Hold the position while breathing normally — the movement is subtle, and your hips stay on the floor.",
+        "Release slowly and let the natural curve of your back return before the next tilt."
+      ]
+    },
+    {
+      "key": "single-knee-to-chest",
+      "name": "Single Knee-to-Chest",
+      "position": "supine",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["spine", "hip"],
+      "tags": ["spine-rehab", "stretch", "early-phase", "range-of-motion"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with both knees bent and feet flat.",
+        "Bring one knee up and grasp behind the thigh with both hands.",
+        "Draw the knee gently toward your chest until you feel an easy stretch in the lower back and buttock — a steady pull, never a bounce.",
+        "Hold while the other foot stays relaxed on the floor, then lower the leg with control and switch sides."
+      ]
+    },
+    {
+      "key": "lower-trunk-rotation",
+      "name": "Lower-Trunk Rotation",
+      "position": "supine",
+      "difficulty": 1,
+      "dosage_type": "reps",
+      "body_regions": ["spine", "core"],
+      "tags": ["spine-rehab", "range-of-motion", "early-phase", "mobility"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with knees bent and together, feet flat, arms out to the sides for balance.",
+        "Keeping the knees stacked, slowly lower them toward one side as far as comfortable.",
+        "Let both shoulders stay heavy on the floor — the twist comes from the trunk, not the arms.",
+        "Bring the knees back to center with control, then repeat toward the other side."
+      ]
+    },
+    {
+      "key": "cat-camel",
+      "name": "Cat-Camel",
+      "position": "quadruped",
+      "difficulty": 1,
+      "dosage_type": "reps",
+      "body_regions": ["spine"],
+      "tags": ["spine-rehab", "range-of-motion", "early-phase", "mobility"],
+      "equipment": ["none"],
+      "instructions": [
+        "Start on hands and knees, hands under shoulders and knees under hips.",
+        "Slowly round your back up toward the ceiling, letting your head drop gently.",
+        "Then reverse: let the belly sink as the chest and tailbone lift, eyes coming forward.",
+        "Glide between the two shapes through a comfortable range — this is a motion drill, not a stretch, so stay well short of strain."
+      ]
+    },
+    {
+      "key": "prone-press-up",
+      "name": "Prone Press-Up",
+      "position": "prone",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["spine"],
+      "tags": ["spine-rehab", "range-of-motion", "extension", "early-phase"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie face down with your hands flat beside your shoulders, elbows bent.",
+        "Press through your hands to lift your chest, letting the back arch while the hips and thighs stay relaxed on the floor.",
+        "Straighten the elbows only as far as comfortable, breathing out as you rise.",
+        "Lower back down slowly. Stop if symptoms spread farther down your leg — pain drawing in toward the spine is the pattern you want."
+      ]
+    },
+    {
+      "key": "dead-bug",
+      "name": "Dead Bug",
+      "position": "supine",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["core", "spine"],
+      "tags": ["spine-rehab", "strengthening", "motor-control", "anti-extension"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with arms pointing at the ceiling and hips and knees bent to 90 degrees, shins level like a tabletop.",
+        "Gently brace your midsection so the lower back stays quiet against the floor.",
+        "Slowly lower one arm overhead and the opposite leg toward the floor, only as far as the back can stay still.",
+        "Return to the start and repeat with the other arm-and-leg pair — slow beats big."
+      ]
+    },
+    {
+      "key": "modified-curl-up",
+      "name": "Modified Curl-Up",
+      "position": "supine",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["core", "spine"],
+      "tags": ["spine-rehab", "strengthening", "anterior-core", "spine-sparing"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your back with one knee bent and the other leg straight; slide both hands under the small of your back, palms down, to support its natural curve.",
+        "Lift your head and shoulders as one unit just a short way off the floor — the neck stays long and the low back does not flatten onto your hands.",
+        "Hold briefly while breathing, then lower back down without letting the back curve change.",
+        "Swap which knee is bent partway through so both sides share the work."
+      ]
+    },
+    {
+      "key": "hip-hinge-drill",
+      "name": "Standing Hip Hinge",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["spine", "hip", "core"],
+      "tags": ["spine-rehab", "posture", "motor-control", "functional"],
+      "equipment": ["none", "other"],
+      "instructions": [
+        "Stand tall with feet hip-width apart and knees soft, holding a dowel upright along your spine — or place one hand on your breastbone and the other on your belly.",
+        "Push your hips straight back, letting the chest tip forward like a drawbridge while the back stays long.",
+        "Keep the dowel touching the back of your head, upper back, and tailbone the whole way — or keep the distance between your hands unchanged.",
+        "Hinge only as far as the hamstrings allow without the back rounding, then drive the hips forward to stand tall."
+      ]
+    },
+    {
+      "key": "bird-dog",
+      "name": "Bird Dog",
+      "position": "quadruped",
+      "difficulty": 3,
+      "dosage_type": "hold",
+      "body_regions": ["spine", "core", "hip"],
+      "tags": ["spine-rehab", "strengthening", "isometric", "balance", "unilateral"],
+      "equipment": ["none"],
+      "instructions": [
+        "Start on hands and knees, hands under shoulders and knees under hips, back in its natural neutral curve.",
+        "Reach one arm forward and the opposite leg back until both are level with your trunk.",
+        "Hold steady — pelvis level and low back quiet, as if a full cup were balanced on it.",
+        "Return to all fours with control, then repeat with the opposite pair."
+      ]
+    },
+    {
+      "key": "side-plank-knees",
+      "name": "Side Plank (Knees)",
+      "position": "side_lying",
+      "difficulty": 3,
+      "dosage_type": "hold",
+      "body_regions": ["core", "spine"],
+      "tags": ["spine-rehab", "isometric", "strengthening", "lateral-core"],
+      "equipment": ["none", "towel"],
+      "instructions": [
+        "Lie on your side propped on your forearm, elbow under the shoulder, knees bent and stacked; a folded towel under the bottom knee adds comfort.",
+        "Lift your hips forward and up until your body forms a straight line from head to knees.",
+        "Keep the hips pressed forward — don't let them sag toward the floor or drift behind you.",
+        "Hold while breathing normally, then lower with control and switch sides."
+      ]
+    },
+    {
+      "key": "side-plank-full",
+      "name": "Side Plank",
+      "position": "side_lying",
+      "difficulty": 4,
+      "dosage_type": "hold",
+      "body_regions": ["core", "spine"],
+      "tags": ["spine-rehab", "isometric", "strengthening", "lateral-core", "advanced"],
+      "equipment": ["none"],
+      "instructions": [
+        "Lie on your side propped on your forearm, elbow under the shoulder, legs straight with the feet stacked or staggered.",
+        "Lift the hips until the body forms one straight line from ear to ankle.",
+        "Keep the shoulders and hips stacked vertically — no rolling forward or back.",
+        "Hold while breathing normally; lower the moment the line begins to sag, then switch sides."
+      ]
+    }
+  ],
+  "progressions": [
+    { "from": "pelvic-tilt", "to": "dead-bug", "note": "Progress once you can hold the tilt through several slow breaths without the hips lifting or the legs tensing." },
+    { "from": "dead-bug", "to": "bird-dog", "note": "Move to quadruped once opposite arm-and-leg reps stay slow with the lower back motionless throughout." },
+    { "from": "cat-camel", "to": "bird-dog", "note": "Add the hold once the full glide is smooth and symptom-free through the whole comfortable range." },
+    { "from": "single-knee-to-chest", "to": "lower-trunk-rotation", "note": "Add rotation once each knee draws to the chest through full range with nothing felt down the leg." },
+    { "from": "pelvic-tilt", "to": "modified-curl-up", "note": "Layer in the curl-up once you can find and keep the neutral curve while breathing quietly." },
+    { "from": "modified-curl-up", "to": "side-plank-knees", "note": "Add lateral work once curl-up reps stay smooth with the neck relaxed and no change felt at the hands under the back." },
+    { "from": "side-plank-knees", "to": "side-plank-full", "note": "Straighten the legs once the knee version holds a steady line on both sides without the hips sagging." },
+    { "from": "pelvic-tilt", "to": "hip-hinge-drill", "note": "Take the drill to standing once you can set the neutral curve on the first try and keep it while breathing quietly." }
+  ]
+}

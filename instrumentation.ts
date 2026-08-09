@@ -16,7 +16,7 @@ export async function register() {
   const { imported, core } = await seedLibrary(getPool());
   console.log(
     imported || core
-      ? `[carryover] library seeded: ${imported} imported, ${core} knee-core upserts`
+      ? `[carryover] library seeded: ${imported} imported, ${core} corridor upserts`
       : "[carryover] library seeds up to date",
   );
 }

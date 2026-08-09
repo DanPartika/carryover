@@ -12,6 +12,7 @@ import { GoalCheck, type GoalRow } from "@/components/Goals";
 import PatientIntake from "@/components/PatientIntake";
 import { withBase } from "@/lib/config/basePath";
 import { dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
+import { imageFitClass, imageSrc } from "@/lib/media";
 
 type Item = {
   id: string;
@@ -717,9 +718,9 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
     >
       <div className="flex items-start gap-3">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-raise">
-          {item.image ? (
+          {imageSrc(item.image) ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt="" className="h-full w-full object-cover" />
+            <img src={imageSrc(item.image)!} alt="" className={imageFitClass(item.image)} />
           ) : (
             <span className="text-2xl" aria-hidden>
               🦵

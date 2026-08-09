@@ -1,0 +1,179 @@
+{
+  "_comment": "Ankle-foot rehab corridor (post-sprain, Achilles tendinopathy, plantar fasciitis) — ROM through banded strengthening to balance, gait, and eccentric loading. Authored in-house: original instruction text, mechanics are facts, phrasing is ours. heel-raise and ankle-pumps live in the knee corridor and are deliberately not duplicated here.",
+  "exercises": [
+    {
+      "key": "ankle-alphabet",
+      "name": "Ankle Alphabet",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "time",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "range-of-motion", "early-phase", "mobility"],
+      "equipment": ["chair"],
+      "instructions": [
+        "Sit tall in a chair and extend your working leg so the foot hovers just above the floor.",
+        "Keeping the leg itself still, trace the letters of the alphabet in the air with your big toe, moving only at the ankle.",
+        "Make each letter large enough to reach the comfortable edge of your motion in every direction.",
+        "If a letter pinches or sharply pulls, draw it smaller — a gentle stretch is fine, sharp pain is not."
+      ]
+    },
+    {
+      "key": "towel-scrunch",
+      "name": "Towel Scrunch",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "strengthening", "early-phase"],
+      "equipment": ["towel", "chair"],
+      "instructions": [
+        "Sit in a chair with a towel spread flat on a smooth floor and your bare foot resting on the near edge.",
+        "Keeping the heel planted, scrunch your toes to gather the towel in toward you, a little at a time.",
+        "When you run out of towel, smooth it back out and begin again.",
+        "If the arch of your foot cramps, pause and gently stretch the toes back before continuing."
+      ]
+    },
+    {
+      "key": "wall-calf-stretch",
+      "name": "Wall Calf Stretch",
+      "position": "standing",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "stretch", "calves", "early-phase"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand facing a wall with both hands on it at about chest height.",
+        "Step your working leg well back, heel flat and toes pointing straight at the wall.",
+        "Keeping that back knee straight, bend the front knee and lean toward the wall until you feel a stretch in the upper calf.",
+        "Keep the back heel pressed to the floor the whole time — if it lifts, shorten your stance.",
+        "Hold steady without bouncing; the stretch should feel firm but never sharp."
+      ]
+    },
+    {
+      "key": "soleus-stretch",
+      "name": "Soleus Stretch",
+      "position": "standing",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "stretch", "calves", "achilles"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand facing a wall in the same staggered stance as the calf stretch, hands on the wall.",
+        "This time bend the back knee slightly while keeping that heel flat on the floor.",
+        "Sink your weight down and forward until you feel a deeper, lower stretch just above the heel.",
+        "Hold steady and keep breathing — no bouncing, and the heel never leaves the floor."
+      ]
+    },
+    {
+      "key": "band-dorsiflexion",
+      "name": "Band Dorsiflexion",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "strengthening", "early-phase"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Sit on the floor or a bed with your working leg straight out in front of you.",
+        "Loop a resistance band over the top of your foot and anchor the far end to something sturdy ahead of you, so the band pulls the foot away.",
+        "Pull your foot up toward your shin against the band, moving only at the ankle.",
+        "Pause at the top, then let the band draw the foot back down slowly — the return should be just as controlled as the pull."
+      ]
+    },
+    {
+      "key": "band-plantarflexion",
+      "name": "Band Plantarflexion",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "strengthening", "calves", "early-phase"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Sit on the floor or a bed with your working leg straight and a band looped around the ball of that foot, holding an end in each hand.",
+        "Press the foot down and away, like pushing a gas pedal, until you reach a comfortable end range.",
+        "Keep the knee still — the movement comes from the ankle alone.",
+        "Return slowly, resisting the band on the way back rather than letting it snap the foot up."
+      ]
+    },
+    {
+      "key": "band-inversion-eversion",
+      "name": "Band Inversion & Eversion",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "strengthening", "stability", "ankle-control"],
+      "equipment": ["resistance-band"],
+      "instructions": [
+        "Sit with your working leg straight and a resistance band looped around the forefoot, anchored out to one side.",
+        "Keeping the knee pointing at the ceiling, steer the foot away from the anchor — sweeping inward across your midline — then return with control.",
+        "Re-anchor the band on the other side and steer the foot outward the same way.",
+        "Steer from the ankle, not the hip: the knee should barely move.",
+        "Slow and controlled beats big and fast in both directions."
+      ]
+    },
+    {
+      "key": "single-leg-balance",
+      "name": "Single-Leg Balance",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "time",
+      "body_regions": ["ankle_foot", "core"],
+      "tags": ["ankle-foot-rehab", "balance", "unilateral", "proprioception"],
+      "equipment": ["none", "wall", "balance-pad"],
+      "instructions": [
+        "Stand beside a wall or counter so support is within easy reach.",
+        "Shift your weight onto the working leg and lift the other foot just off the floor.",
+        "Stand tall with a soft knee and let the foot make small corrections — that quiet wobble is the exercise.",
+        "Touch the support the moment you need it; a fingertip is enough.",
+        "To progress, stand on a balance pad or repeat the drill with your eyes closed, support close by."
+      ]
+    },
+    {
+      "key": "heel-toe-walks",
+      "name": "Heel-and-Toe Walks",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "time",
+      "body_regions": ["ankle_foot", "core"],
+      "tags": ["ankle-foot-rehab", "balance", "gait", "strengthening", "unilateral"],
+      "equipment": ["none", "wall"],
+      "instructions": [
+        "Stand at one end of a clear hallway, beside a wall or counter you can touch if needed.",
+        "Walk forward on your heels with the toes lifted, taking short steps and staying tall through the trunk.",
+        "At the end, turn and walk back up on the balls of your feet with the heels high.",
+        "Alternate heel walking and toe walking for the whole time; a steady rhythm matters more than speed."
+      ]
+    },
+    {
+      "key": "eccentric-heel-drop",
+      "name": "Eccentric Heel Drop",
+      "position": "standing",
+      "difficulty": 4,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "eccentric", "strengthening", "achilles", "unilateral", "advanced"],
+      "equipment": ["step", "wall"],
+      "instructions": [
+        "Stand with the balls of both feet on the edge of a step, heels hanging free, one hand on the rail or wall for balance.",
+        "Rise up onto your toes using both legs together.",
+        "Lift the healthy foot away and lower slowly on the working leg alone, letting the heel sink just below the level of the step.",
+        "Place the other foot back down and rise with both legs again — never push up on the working leg alone.",
+        "The slow lowering is the exercise; mild soreness in the tendon is acceptable, sharp pain means stop."
+      ]
+    }
+  ],
+  "progressions": [
+    { "from": "ankle-alphabet", "to": "band-dorsiflexion", "note": "Add resistance once the full alphabet traces twice through without pinching at any letter." },
+    { "from": "band-dorsiflexion", "to": "band-inversion-eversion", "note": "Add the steering directions once the pull-up stays smooth through the band's full stretch, including the slow return." },
+    { "from": "band-inversion-eversion", "to": "single-leg-balance", "note": "Begin balance work when both steering directions stay controlled without the knee drifting to help." },
+    { "from": "towel-scrunch", "to": "single-leg-balance", "note": "Progress when the whole towel gathers in without the heel lifting or the arch cramping." },
+    { "from": "band-plantarflexion", "to": "eccentric-heel-drop", "note": "Move to step loading once full-range presses against a medium band stay controlled both ways with no next-day calf soreness." },
+    { "from": "wall-calf-stretch", "to": "soleus-stretch", "note": "Add the bent-knee version once the straight-knee stretch gives only a gentle pull at end range with the heel flat." },
+    { "from": "soleus-stretch", "to": "eccentric-heel-drop", "note": "Start eccentric loading once both stretch positions are comfortable with the heel staying flat throughout the hold." },
+    { "from": "single-leg-balance", "to": "heel-toe-walks", "note": "Progress when a full minute of steady single-leg standing on firm ground needs no touch of the support." }
+  ]
+}

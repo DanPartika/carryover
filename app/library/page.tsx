@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
 import ExerciseComposer from "@/components/ExerciseComposer";
+import { imageFitClass, imageSrc, isOwnedArt } from "@/lib/media";
 
 type Item = {
   id: string;
@@ -310,13 +311,13 @@ export default function LibraryPage() {
             className="group rounded-xl border border-edge bg-card p-3 text-left transition hover:border-accent"
           >
             <div className="flex h-32 items-center justify-center overflow-hidden rounded-lg bg-raise">
-              {it.image ? (
+              {imageSrc(it.image) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={it.image}
+                  src={imageSrc(it.image)!}
                   alt=""
                   loading="lazy"
-                  className="h-full w-full object-cover"
+                  className={imageFitClass(it.image)}
                 />
               ) : (
                 <span className="text-3xl" aria-hidden>
@@ -331,7 +332,7 @@ export default function LibraryPage() {
             <div className="mt-1 flex flex-wrap gap-1">
               {it.source === "carryover" && (
                 <span className="rounded-full bg-accent-deep px-2 py-0.5 text-[11px] font-medium text-white">
-                  knee core
+                  rehab core
                 </span>
               )}
               {/* Who wrote it and who can see it — a PT scanning the grid
@@ -404,7 +405,7 @@ export default function LibraryPage() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {detail.exercise.images.slice(0, 2).map((src) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={src} src={src} alt="" className="rounded-lg bg-raise object-cover" />
+                  <img key={src} src={imageSrc(src)!} alt="" className={`rounded-lg bg-raise ${isOwnedArt(src) ? "object-contain p-2" : "object-cover"}`} />
                 ))}
               </div>
             )}
