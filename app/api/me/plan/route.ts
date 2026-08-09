@@ -121,6 +121,8 @@ export async function GET(req: NextRequest) {
   // it never touches the compliance percentage, but the PT still sees it.
   const { rows: adhocToday } = await pool.query(
     `SELECT al.id, al.exercise_id AS "exerciseId", e.name,
+            e.dosage_type AS "dosageType",
+            al.sets_done AS "setsDone", al.reps_done AS "repsDone",
             al.duration_done_mins AS "durationDoneMins", al.pain, al.note
      FROM adherence_logs al JOIN exercises e ON e.id = al.exercise_id
      WHERE al.patient_user_id = $1 AND al.plan_item_id IS NULL
@@ -129,9 +131,10 @@ export async function GET(req: NextRequest) {
     [user.id],
   );
 
-  // The "log something else" picker. Modalities only: this is for care the
-  // patient reaches for unprompted (ice, boots, heat), not for browsing 887
-  // exercises on a phone.
+  // The quick half of the "log something else" picker: care the patient
+  // reaches for unprompted (ice, boots, heat) stays one tap in a dropdown.
+  // Exercises nobody prescribed — "I also did squats" — go through the
+  // library search beside it instead of bloating this list.
   const { rows: careOptions } = await pool.query(
     `SELECT id, name FROM exercises
      WHERE kind = 'modality' AND archived_at IS NULL AND clinic_id IS NULL

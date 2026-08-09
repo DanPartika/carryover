@@ -6,12 +6,12 @@
 // (built in step 3, unpopulated until now). Phone-first — large tap targets,
 // no PT-facing controls.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { GoalCheck, type GoalRow } from "@/components/Goals";
 import PatientIntake from "@/components/PatientIntake";
 import { withBase } from "@/lib/config/basePath";
-import { dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
+import { doneText, dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 import { imageFitClass, imageSrc } from "@/lib/media";
 
 type Item = {
@@ -49,9 +49,21 @@ type AdhocLog = {
   id: string;
   exerciseId: string;
   name: string;
+  dosageType: DosageType;
+  setsDone: number | null;
+  repsDone: number | null;
   durationDoneMins: number | null;
   pain: number | null;
   note: string | null;
+};
+
+type ExtraHit = {
+  id: string;
+  name: string;
+  difficulty: number | null;
+  dosageType: DosageType;
+  kind: "exercise" | "modality";
+  image: string | null;
 };
 
 type Equipment = { id: string; slug: string; name: string; kind: string; owned: boolean };
@@ -236,11 +248,15 @@ function RaiseHand({ current, onChanged }: { current: Checkin | null; onChanged:
   );
 }
 
-/** Care nobody prescribed: iced because it felt tight, put the boots on,
- *  reached for the heat pad. It reaches the PT and its pain score joins the
- *  trend, but it is deliberately outside the compliance score — the percentage
- *  answers "did they do what was asked", and self-care isn't that. */
-function CareLogger({
+/** Anything nobody prescribed: iced because it felt tight, took an extra
+ *  walk, did some squats at the gym. It reaches the PT and its pain score
+ *  joins the trend, but it is deliberately outside the compliance score — the
+ *  percentage answers "did they do what was asked", and this isn't that.
+ *
+ *  Two ways in, one logger: care stays a one-tap dropdown (ice at 9pm is a
+ *  thumb, not a search), and everything else comes through library search —
+ *  gym tier included, because "what did you actually do" has no curation. */
+function ExtrasLogger({
   options,
   logged,
   onChanged,
@@ -249,12 +265,54 @@ function CareLogger({
   logged: AdhocLog[];
   onChanged: () => void;
 }) {
-  const [picked, setPicked] = useState("");
+  const [picked, setPicked] = useState<ExtraHit | null>(null);
+  const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<ExtraHit[]>([]);
+  const [sets, setSets] = useState(3);
+  const [reps, setReps] = useState(10);
   const [mins, setMins] = useState(15);
   const [pain, setPain] = useState<number | "">("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    const q = search.trim();
+    // All setState happens inside the debounce callback (async), never in the
+    // effect body itself — same shape as the PT editor's picker.
+    timer.current = setTimeout(
+      async () => {
+        if (!q) {
+          setHits([]);
+          return;
+        }
+        // tier=all: the curated rehab tier is for prescribing; a patient who
+        // did barbell squats should be able to say so.
+        const res = await apiFetch(
+          `/api/exercises?${new URLSearchParams({ q, tier: "all", limit: "8" })}`,
+        );
+        if (res.ok) {
+          const d = (await res.json()) as { items: ExtraHit[] };
+          setHits(d.items);
+        }
+      },
+      q ? 250 : 0,
+    );
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [search]);
+
+  function pick(hit: ExtraHit) {
+    setPicked(hit);
+    setSearch("");
+    setHits([]);
+    setSets(3);
+    setReps(10);
+    setMins(15);
+  }
 
   async function save() {
     if (!picked) return;
@@ -265,8 +323,12 @@ function CareLogger({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          exerciseId: picked,
-          durationDoneMins: mins,
+          exerciseId: picked.id,
+          // Same rule as the prescribed logger: only send what this thing's
+          // dosage means, so the PT's dashboard reads real numbers.
+          setsDone: picked.dosageType === "time" ? null : sets,
+          repsDone: picked.dosageType === "reps" ? reps : null,
+          durationDoneMins: picked.dosageType === "time" ? mins : null,
           pain: pain === "" ? null : pain,
           note,
         }),
@@ -275,7 +337,7 @@ function CareLogger({
         setError("couldn't save that — try again");
         return;
       }
-      setPicked("");
+      setPicked(null);
       setNote("");
       setPain("");
       onChanged();
@@ -297,7 +359,8 @@ function CareLogger({
         Anything else today?
       </h2>
       <p className="mt-1 text-xs text-muted">
-        Ice, heat, boots, TENS — whether or not it&apos;s on your plan. Your PT sees it.
+        Ice, heat, an extra walk, some squats — whether or not it&apos;s on your plan. Your
+        PT sees it.
       </p>
 
       {logged.length > 0 && (
@@ -309,9 +372,13 @@ function CareLogger({
             >
               <span>
                 {l.name}
-                {l.durationDoneMins ? (
-                  <span className="ml-2 text-xs text-muted">{l.durationDoneMins} min</span>
-                ) : null}
+                <span className="ml-2 text-xs text-muted">
+                  {doneText(l.dosageType, {
+                    setsDone: l.setsDone,
+                    repsDone: l.repsDone,
+                    durationDoneMins: l.durationDoneMins,
+                  })}
+                </span>
                 {l.pain !== null ? (
                   <span className="ml-2 text-xs text-muted">pain {l.pain}/10</span>
                 ) : null}
@@ -324,50 +391,128 @@ function CareLogger({
         </ul>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <select
-          value={picked}
-          onChange={(e) => setPicked(e.target.value)}
-          className="min-w-40 flex-1 rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
-        >
-          <option value="">Add care…</option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 text-muted">
+      {!picked ? (
+        <div className="mt-3 space-y-2 text-sm">
+          <select
+            value=""
+            onChange={(e) => {
+              const o = options.find((x) => x.id === e.target.value);
+              // Care is dosed in minutes by construction — every modality row
+              // is dosage_type 'time'.
+              if (o) pick({ id: o.id, name: o.name, difficulty: null, dosageType: "time", kind: "modality", image: null });
+            }}
+            className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
+          >
+            <option value="">Add care — ice, heat, boots…</option>
+            {options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          <div className="relative">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="…or search any exercise you did (squats, walking…)"
+              className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
+            />
+            {search.trim() && (
+              <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-card shadow-lg">
+                {hits.map((h) => (
+                  <li key={h.id}>
+                    <button
+                      onClick={() => pick(h)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-raise"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-raise">
+                        {imageSrc(h.image) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={imageSrc(h.image)!} alt="" className={imageFitClass(h.image)} />
+                        ) : (
+                          <span aria-hidden className="text-sm">🦵</span>
+                        )}
+                      </span>
+                      <span className="min-w-0 truncate">{h.name}</span>
+                    </button>
+                  </li>
+                ))}
+                {hits.length === 0 && (
+                  <li className="px-3 py-2 text-muted">Nothing matches yet…</li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2 text-sm">
+          <p>
+            <span className="font-medium">{picked.name}</span>
+            <button
+              onClick={() => setPicked(null)}
+              className="ml-3 text-xs text-muted underline hover:text-ink"
+            >
+              pick something else
+            </button>
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {picked.dosageType === "time" ? (
+              <label className="flex items-center gap-1 text-muted">
+                <input
+                  type="number" min={1} max={600} value={mins}
+                  onChange={(e) => setMins(Number(e.target.value) || 0)}
+                  className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                />
+                min
+              </label>
+            ) : (
+              <>
+                <label className="flex items-center gap-1 text-muted">
+                  <input
+                    type="number" min={0} max={20} value={sets}
+                    onChange={(e) => setSets(Number(e.target.value) || 0)}
+                    className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                  />
+                  sets
+                </label>
+                {picked.dosageType === "reps" && (
+                  <label className="flex items-center gap-1 text-muted">
+                    ×
+                    <input
+                      type="number" min={0} max={100} value={reps}
+                      onChange={(e) => setReps(Number(e.target.value) || 0)}
+                      className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+                    />
+                    reps
+                  </label>
+                )}
+              </>
+            )}
+            <label className="flex items-center gap-1 text-muted">
+              pain
+              <input
+                type="number" min={0} max={10} value={pain}
+                onChange={(e) => setPain(e.target.value === "" ? "" : Number(e.target.value))}
+                className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+              />
+            </label>
+          </div>
           <input
-            type="number" min={1} max={600} value={mins}
-            onChange={(e) => setMins(Number(e.target.value) || 0)}
-            className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note (optional)"
+            className="w-full rounded-lg border border-edge bg-card px-3 py-2 outline-none focus:border-accent"
           />
-          min
-        </label>
-        <label className="flex items-center gap-1 text-muted">
-          pain
-          <input
-            type="number" min={0} max={10} value={pain}
-            onChange={(e) => setPain(e.target.value === "" ? "" : Number(e.target.value))}
-            className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
-          />
-        </label>
-      </div>
-      <input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Note (optional)"
-        className="mt-2 w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
-      />
-      {error && <p className="mt-2 text-sm text-flag">{error}</p>}
-      <button
-        onClick={() => void save()}
-        disabled={busy || !picked}
-        className="mt-2 rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
-      >
-        {busy ? "Saving…" : "Log it"}
-      </button>
+          {error && <p className="text-flag">{error}</p>}
+          <button
+            onClick={() => void save()}
+            disabled={busy}
+            className="rounded-lg bg-accent-deep px-4 py-1.5 font-semibold text-white hover:brightness-110 disabled:opacity-40"
+          >
+            {busy ? "Saving…" : "Log it"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -1099,7 +1244,7 @@ export default function PatientToday() {
         onToggle={(id, o) => void toggleEquipment(id, o)}
       />
 
-      <CareLogger
+      <ExtrasLogger
         options={data.careOptions}
         logged={data.adhocToday}
         onChanged={() => void load()}

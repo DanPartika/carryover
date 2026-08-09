@@ -8,6 +8,7 @@ import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import AdherencePanel from "@/components/AdherencePanel";
+import AmendPlan from "@/components/AmendPlan";
 import { useAuth } from "@/components/AuthContext";
 import ExerciseComposer from "@/components/ExerciseComposer";
 import { GoalsPanel } from "@/components/Goals";
@@ -809,7 +810,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                 ? "AI-drafted, PT-approved"
                 : activePlan.source === "progression"
                   ? "one exercise stepped along the chain at a check-in"
-                  : "built manually"}
+                  : activePlan.source === "amendment"
+                    ? "one exercise added by hand"
+                    : "built manually"}
             </p>
             <ul className="mt-2 space-y-1.5">
               {activePlan.items.map((it) => {
@@ -845,6 +848,12 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                 );
               })}
             </ul>
+            <AmendPlan
+              activePlanId={activePlan.id}
+              patientName={name}
+              existingExerciseIds={activePlan.items.map((i) => i.exerciseId)}
+              onChanged={reload}
+            />
             {(activePlan.equipmentSuggestions?.length ?? 0) > 0 && (
               <p className="mt-2 text-xs text-muted">
                 Suggested to get:{" "}

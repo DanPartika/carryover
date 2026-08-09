@@ -30,7 +30,7 @@ type Context = {
 
 type ReviewRow = {
   id: string;
-  outcome: "progressed" | "regressed" | "revamped" | "no_change";
+  outcome: "progressed" | "regressed" | "revamped" | "no_change" | "amended";
   note: string | null;
   context: Context;
   on: string;
@@ -42,6 +42,7 @@ const OUTCOME: Record<ReviewRow["outcome"], [string, string]> = {
   regressed: ["↓", "eased one exercise off"],
   revamped: ["✨", "drafted a new phase"],
   no_change: ["✓", "no change"],
+  amended: ["+", "added one exercise"],
 };
 
 function day(iso: string): string {
