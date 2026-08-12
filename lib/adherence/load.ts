@@ -9,6 +9,7 @@ import type { Pool } from "pg";
 import {
   computeCompliance,
   computePainTrend,
+  daysBetween,
   effectiveWindowDays,
   windowStart,
   type Compliance,
@@ -17,6 +18,7 @@ import {
   type StatLog,
 } from "@/lib/adherence/stats";
 import type { FlagEntry } from "@/lib/ai/summary";
+import { APP_DAY, dayOf } from "@/lib/dates";
 
 export const DEFAULT_WINDOW_DAYS = 28;
 const MAX_FLAG_ROWS = 20;
@@ -63,7 +65,7 @@ export async function loadAdherence(
 ): Promise<AdherenceView> {
   const {
     rows: [{ today }],
-  } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+  } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
 
   const {
     rows: [ep],
@@ -73,10 +75,17 @@ export async function loadAdherence(
   );
   const patientUserId = ep?.patientUserId;
 
+  // approvedOn is the ACTIVE revision's date (shown as "this plan since…");
+  // programStartedOn is the episode's first approval, which is what the
+  // scoring window anchors to. A one-exercise swap mints a new plan, and
+  // clamping to ITS date wiped the week's record at every check-in.
   const {
     rows: [plan],
-  } = await pool.query<{ id: string; approvedOn: string }>(
-    `SELECT id, approved_at::date::text AS "approvedOn"
+  } = await pool.query<{ id: string; approvedOn: string; programStartedOn: string }>(
+    `SELECT id, ${dayOf("approved_at")}::text AS "approvedOn",
+            (SELECT min(${dayOf("p2.approved_at")}) FROM plans p2
+             WHERE p2.episode_id = $1 AND p2.approved_at IS NOT NULL)::text
+              AS "programStartedOn"
      FROM plans WHERE episode_id = $1 AND status = 'active'`,
     [episodeId],
   );
@@ -95,7 +104,7 @@ export async function loadAdherence(
   };
   if (!plan || !patientUserId) return empty;
 
-  const windowDays = effectiveWindowDays(requestedDays, plan.approvedOn, today);
+  const windowDays = effectiveWindowDays(requestedDays, plan.programStartedOn, today);
   const windowFrom = windowStart(windowDays, today);
 
   const { rows: items } = await pool.query<StatItem>(
@@ -106,12 +115,31 @@ export async function loadAdherence(
     [plan.id],
   );
 
-  // Patient-scoped, not plan-scoped. Ad-hoc care has no plan item to join
-  // through, and its pain score is still this patient's pain — it belongs in
-  // the trend. computeCompliance keys off planItemId, so these rows match no
-  // prescribed item and cannot inflate the percentage.
+  // When each exercise FIRST entered this episode's program — an exercise
+  // amended in three days ago owes three days of sessions, not the window's
+  // twenty-eight.
+  const { rows: firstRows } = await pool.query<{ exerciseId: string; firstOn: string }>(
+    `SELECT pi.exercise_id AS "exerciseId", min(${dayOf("p.approved_at")})::text AS "firstOn"
+     FROM plans p JOIN plan_items pi ON pi.plan_id = p.id
+     WHERE p.episode_id = $1 AND p.approved_at IS NOT NULL
+     GROUP BY pi.exercise_id`,
+    [episodeId],
+  );
+  const firstOn = new Map(firstRows.map((r) => [r.exerciseId, r.firstOn]));
+  for (const it of items) {
+    const first = firstOn.get(it.exerciseId);
+    if (first && first > windowFrom) {
+      it.scoredDays = daysBetween(first, today) + 1;
+      it.scoredFrom = first;
+    }
+  }
+
+  // Patient-scoped, not plan-scoped, and matched to items by EXERCISE — plan
+  // revisions mint new item rows, and scoring by item id zeroed the record at
+  // every check-in. Ad-hoc rows ride along: their pain belongs in the trend,
+  // and an ad-hoc log of a prescribed exercise is that session done.
   const { rows: logs } = await pool.query<StatLog>(
-    `SELECT al.plan_item_id AS "planItemId", al.log_date::text AS "logDate",
+    `SELECT al.exercise_id AS "exerciseId", al.log_date::text AS "logDate",
             al.completed, al.pain
      FROM adherence_logs al
      WHERE al.patient_user_id = $1 AND al.log_date BETWEEN $2::date AND $3::date`,
@@ -146,10 +174,10 @@ export async function loadAdherence(
   const {
     rows: [visitStats],
   } = await pool.query<{ count: number; lastOn: string | null }>(
-    `SELECT count(*)::int AS count, max(started_at)::date::text AS "lastOn"
+    `SELECT count(*)::int AS count, max(${dayOf("started_at")})::text AS "lastOn"
      FROM visits
      WHERE episode_id = $1 AND ended_at IS NOT NULL
-       AND started_at::date BETWEEN $2::date AND $3::date`,
+       AND ${dayOf("started_at")} BETWEEN $2::date AND $3::date`,
     [episodeId, windowFrom, today],
   );
 

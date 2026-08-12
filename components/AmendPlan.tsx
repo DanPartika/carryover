@@ -26,10 +26,20 @@ type Dose = {
   holdSecs: number | null;
   durationMins: number | null;
   intensity: string | null;
-  frequencyPerWeek: number;
+  /** Null while the field is cleared mid-typing — snapping a default back in
+   *  turned a backspaced "7" into "57" on the phone. Defaults on submit. */
+  frequencyPerWeek: number | null;
   location: "office" | "home" | "both";
   careTiming: "" | "before" | "after";
 };
+
+/** Parse an input's value, empty allowed. Clamped like the server will. */
+function numOrNull(v: string, lo: number, hi: number): number | null {
+  if (v === "") return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return null;
+  return Math.min(Math.max(n, lo), hi);
+}
 
 function seedDose(hit: Hit): Dose {
   return {
@@ -227,9 +237,9 @@ export default function AmendPlan({
                 <>
                   <label className="flex items-center gap-1 text-muted">
                     <input
-                      type="number" min={1} max={240} value={dose.durationMins ?? 0}
+                      type="number" min={1} max={240} value={dose.durationMins ?? ""}
                       onChange={(e) =>
-                        setDose({ ...dose, durationMins: Number(e.target.value) || null })
+                        setDose({ ...dose, durationMins: numOrNull(e.target.value, 1, 240) })
                       }
                       className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                     />
@@ -246,8 +256,8 @@ export default function AmendPlan({
                 <>
                   <label className="flex items-center gap-1 text-muted">
                     <input
-                      type="number" min={1} max={10} value={dose.sets ?? 0}
-                      onChange={(e) => setDose({ ...dose, sets: Number(e.target.value) || null })}
+                      type="number" min={1} max={10} value={dose.sets ?? ""}
+                      onChange={(e) => setDose({ ...dose, sets: numOrNull(e.target.value, 1, 10) })}
                       className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                     />
                     sets
@@ -256,8 +266,8 @@ export default function AmendPlan({
                     <label className="flex items-center gap-1 text-muted">
                       ×
                       <input
-                        type="number" min={1} max={50} value={dose.reps ?? 0}
-                        onChange={(e) => setDose({ ...dose, reps: Number(e.target.value) || null })}
+                        type="number" min={1} max={50} value={dose.reps ?? ""}
+                        onChange={(e) => setDose({ ...dose, reps: numOrNull(e.target.value, 1, 50) })}
                         className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                       />
                       reps
@@ -266,9 +276,9 @@ export default function AmendPlan({
                     <label className="flex items-center gap-1 text-muted">
                       hold
                       <input
-                        type="number" min={1} max={300} value={dose.holdSecs ?? 0}
+                        type="number" min={1} max={300} value={dose.holdSecs ?? ""}
                         onChange={(e) =>
-                          setDose({ ...dose, holdSecs: Number(e.target.value) || null })
+                          setDose({ ...dose, holdSecs: numOrNull(e.target.value, 1, 300) })
                         }
                         className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                       />
@@ -279,9 +289,9 @@ export default function AmendPlan({
               )}
               <label className="flex items-center gap-1 text-muted">
                 <input
-                  type="number" min={1} max={14} value={dose.frequencyPerWeek}
+                  type="number" min={1} max={14} value={dose.frequencyPerWeek ?? ""}
                   onChange={(e) =>
-                    setDose({ ...dose, frequencyPerWeek: Number(e.target.value) || 5 })
+                    setDose({ ...dose, frequencyPerWeek: numOrNull(e.target.value, 1, 14) })
                   }
                   className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                 />
@@ -314,7 +324,8 @@ export default function AmendPlan({
               Will be prescribed as{" "}
               <span className="font-medium text-ink">
                 {dosageText({ dosageType: picked.dosageType, ...dose })} ·{" "}
-                {dose.frequencyPerWeek}/wk · {dose.location}
+                {dose.frequencyPerWeek ?? (picked.kind === "modality" ? 7 : 5)}/wk ·{" "}
+                {dose.location}
               </span>
             </p>
             <textarea

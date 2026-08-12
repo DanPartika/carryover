@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
+import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const HISTORY_LIMIT = 20;
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
     // the timestamp with toLocaleDateString would disagree with the dashboard,
     // which gets its dates from Postgres — an evening visit would show as
     // "Aug 1" in one panel and "Aug 2" in the other, on the same screen.
-    `SELECT v.id, v.started_at AS "startedAt", v.started_at::date::text AS "startedOn",
+    `SELECT v.id, v.started_at AS "startedAt", ${dayOf("v.started_at")}::text AS "startedOn",
             v.ended_at AS "endedAt", v.note, u.display_name AS "ptName"
      FROM visits v LEFT JOIN users u ON u.id = v.pt_user_id
      WHERE v.episode_id = $1

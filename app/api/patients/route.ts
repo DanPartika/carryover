@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { APP_DAY } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { reviewSignals } from "@/lib/review/signals";
 
@@ -34,16 +35,15 @@ export async function GET(req: NextRequest) {
             -- Between-visit triage (PRD build step 5): who raised a hand, and
             -- who has gone quiet. Flags age out after two weeks, which is also
             -- the app's only "resolve" — there is no acknowledge action yet.
+            -- Patient-scoped, not active-plan-scoped: a flag raised Tuesday
+            -- must not vanish from this list because the plan was revised
+            -- Wednesday, and "quiet for N days" is about the person logging,
+            -- not about which revision they logged under.
             (SELECT count(*)::int FROM adherence_logs al
-             JOIN plan_items pi ON pi.id = al.plan_item_id
-             JOIN plans p ON p.id = pi.plan_id
-             WHERE p.episode_id = ep.id AND p.status = 'active'
-               AND al.flag_for_pt AND al.log_date > CURRENT_DATE - 14) AS "flagCount",
+             WHERE al.patient_user_id = u.id
+               AND al.flag_for_pt AND al.log_date > ${APP_DAY} - 14) AS "flagCount",
             (SELECT max(al.log_date)::text FROM adherence_logs al
-             JOIN plan_items pi ON pi.id = al.plan_item_id
-             JOIN plans p ON p.id = pi.plan_id
-             WHERE p.episode_id = ep.id AND p.status = 'active'
-               AND al.completed) AS "lastLoggedOn"
+             WHERE al.patient_user_id = u.id AND al.completed) AS "lastLoggedOn"
      FROM reachable r
      JOIN users u ON u.id = r.patient_user_id
      JOIN clinics c ON c.id = r.clinic_id
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   // the same clock adherence_logs.log_date is written with.
   const {
     rows: [{ today }],
-  } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+  } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
 
   // Check-in signals for every reachable patient at once. Batched rather than
   // looped: the chip has to mean the same thing here as it does on the patient

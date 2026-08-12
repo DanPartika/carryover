@@ -268,9 +268,10 @@ function ExtrasLogger({
   const [picked, setPicked] = useState<ExtraHit | null>(null);
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<ExtraHit[]>([]);
-  const [sets, setSets] = useState(3);
-  const [reps, setReps] = useState(10);
-  const [mins, setMins] = useState(15);
+  // "" is a cleared field mid-typing — see ExerciseCard.
+  const [sets, setSets] = useState<number | "">(3);
+  const [reps, setReps] = useState<number | "">(10);
+  const [mins, setMins] = useState<number | "">(15);
   const [pain, setPain] = useState<number | "">("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -326,9 +327,9 @@ function ExtrasLogger({
           exerciseId: picked.id,
           // Same rule as the prescribed logger: only send what this thing's
           // dosage means, so the PT's dashboard reads real numbers.
-          setsDone: picked.dosageType === "time" ? null : sets,
-          repsDone: picked.dosageType === "reps" ? reps : null,
-          durationDoneMins: picked.dosageType === "time" ? mins : null,
+          setsDone: picked.dosageType === "time" || sets === "" ? null : sets,
+          repsDone: picked.dosageType === "reps" && reps !== "" ? reps : null,
+          durationDoneMins: picked.dosageType === "time" && mins !== "" ? mins : null,
           pain: pain === "" ? null : pain,
           note,
         }),
@@ -460,7 +461,7 @@ function ExtrasLogger({
               <label className="flex items-center gap-1 text-muted">
                 <input
                   type="number" min={1} max={600} value={mins}
-                  onChange={(e) => setMins(Number(e.target.value) || 0)}
+                  onChange={(e) => setMins(e.target.value === "" ? "" : Number(e.target.value))}
                   className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                 />
                 min
@@ -470,7 +471,7 @@ function ExtrasLogger({
                 <label className="flex items-center gap-1 text-muted">
                   <input
                     type="number" min={0} max={20} value={sets}
-                    onChange={(e) => setSets(Number(e.target.value) || 0)}
+                    onChange={(e) => setSets(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                   />
                   sets
@@ -480,7 +481,7 @@ function ExtrasLogger({
                     ×
                     <input
                       type="number" min={0} max={100} value={reps}
-                      onChange={(e) => setReps(Number(e.target.value) || 0)}
+                      onChange={(e) => setReps(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                     />
                     reps
@@ -807,9 +808,11 @@ function currentStreakCount(streak: StreakDay[]): number {
 function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) {
   const dosage = dosageTypeOf(item);
   const [open, setOpen] = useState(false);
-  const [sets, setSets] = useState(item.logSetsDone ?? item.sets ?? 0);
-  const [reps, setReps] = useState(item.logRepsDone ?? item.reps ?? 0);
-  const [mins, setMins] = useState(item.logDurationDoneMins ?? item.durationMins ?? 0);
+  // "" is a cleared field mid-typing — snapping a number back in made
+  // backspace-then-type concatenate on the phone.
+  const [sets, setSets] = useState<number | "">(item.logSetsDone ?? item.sets ?? 0);
+  const [reps, setReps] = useState<number | "">(item.logRepsDone ?? item.reps ?? 0);
+  const [mins, setMins] = useState<number | "">(item.logDurationDoneMins ?? item.durationMins ?? 0);
   const [pain, setPain] = useState(item.logPain ?? 0);
   const [effort, setEffort] = useState(item.logEffort ?? 3);
   const [note, setNote] = useState(item.logNote ?? "");
@@ -830,9 +833,9 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
           completed,
           // Only send what this item's dosage means. Posting reps for a bike
           // would store a number the PT's dashboard has no way to read.
-          setsDone: dosage === "time" ? null : sets,
-          repsDone: dosage === "reps" ? reps : null,
-          durationDoneMins: dosage === "time" ? mins : null,
+          setsDone: dosage === "time" || sets === "" ? null : sets,
+          repsDone: dosage === "reps" && reps !== "" ? reps : null,
+          durationDoneMins: dosage === "time" && mins !== "" ? mins : null,
           pain,
           effort,
           note,
@@ -917,7 +920,7 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
                   minutes
                   <input
                     type="number" min={0} max={600} value={mins}
-                    onChange={(e) => setMins(Number(e.target.value) || 0)}
+                    onChange={(e) => setMins(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-16 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                   />
                 </label>
@@ -931,7 +934,7 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
                   sets
                   <input
                     type="number" min={0} max={20} value={sets}
-                    onChange={(e) => setSets(Number(e.target.value) || 0)}
+                    onChange={(e) => setSets(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                   />
                 </label>
@@ -940,7 +943,7 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
                     reps
                     <input
                       type="number" min={0} max={100} value={reps}
-                      onChange={(e) => setReps(Number(e.target.value) || 0)}
+                      onChange={(e) => setReps(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center"
                     />
                   </label>
@@ -1142,7 +1145,7 @@ export default function PatientToday() {
                 </p>
                 <ul className="space-y-2">
                   {beforeItems.map((it) => (
-                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                    <ExerciseCard key={`${it.id}:${it.logId ?? "new"}`} item={it} onLogged={() => void load()} />
                   ))}
                 </ul>
               </div>
@@ -1156,7 +1159,7 @@ export default function PatientToday() {
                 )}
                 <ul className="space-y-2">
                   {mainItems.map((it) => (
-                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                    <ExerciseCard key={`${it.id}:${it.logId ?? "new"}`} item={it} onLogged={() => void load()} />
                   ))}
                 </ul>
               </div>
@@ -1168,7 +1171,7 @@ export default function PatientToday() {
                 </p>
                 <ul className="space-y-2">
                   {afterItems.map((it) => (
-                    <ExerciseCard key={it.id} item={it} onLogged={() => void load()} />
+                    <ExerciseCard key={`${it.id}:${it.logId ?? "new"}`} item={it} onLogged={() => void load()} />
                   ))}
                 </ul>
               </div>

@@ -255,7 +255,9 @@ export default function VisitMode({
   return (
     <section className="rounded-xl border border-edge bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">In office</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          Visits
+        </h2>
         {!openId && (
           <button
             onClick={() => void startVisit()}
@@ -266,6 +268,13 @@ export default function VisitMode({
           </button>
         )}
       </div>
+
+      {/* Renamed from "In office" and captioned, because it read as the plan
+          repeated: the Plan section is the PRESCRIPTION; this is the RECORD
+          of what actually happened in the room, visit by visit. */}
+      <p className="mt-1 text-xs text-muted">
+        What actually happened in the room — the plan above is what&apos;s prescribed.
+      </p>
 
       {error && <p className="mt-2 text-sm text-flag">{error}</p>}
 

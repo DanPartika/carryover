@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
+import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const MAX_ROWS = 50;
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { rows: reviews } = await pool.query(
     `SELECT pr.id, pr.outcome, pr.note, pr.context,
-            pr.created_at::date::text AS "on",
+            ${dayOf("pr.created_at")}::text AS "on",
             u.display_name AS "reviewedByName",
             p.source AS "planSource"
      FROM plan_reviews pr

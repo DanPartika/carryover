@@ -10,8 +10,9 @@
 // exactly the dependency the ICS approach avoids.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/db/pool";
 import { buildPatientFeed, type FeedItem } from "@/lib/calendar/ics";
+import { dayOf } from "@/lib/dates";
+import { getPool } from "@/lib/db/pool";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   const {
     rows: [plan],
   } = await pool.query<{ id: string; approved_on: string }>(
-    `SELECT p.id, p.approved_at::date::text AS approved_on
+    `SELECT p.id, ${dayOf("p.approved_at")}::text AS approved_on
      FROM plans p
      JOIN episodes ep ON ep.id = p.episode_id
      WHERE ep.patient_user_id = $1 AND ep.closed_at IS NULL AND p.status = 'active'

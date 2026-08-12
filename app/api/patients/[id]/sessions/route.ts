@@ -16,6 +16,7 @@ import { DEFAULT_WINDOW_DAYS } from "@/lib/adherence/load";
 import { windowStart } from "@/lib/adherence/stats";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
+import { APP_DAY } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const WINDOW_CHOICES = [7, 14, 28, 90];
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const {
     rows: [{ today }],
-  } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+  } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
   const from = windowStart(days, today);
 
   const { rows: sessions } = await pool.query(

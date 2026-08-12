@@ -259,6 +259,21 @@ export default function ExerciseComposer({
 
       {error && <p className="text-flag">{error}</p>}
 
+      {/* A dead button with no reason reads as broken (Dan hit it on his
+          second custom exercise — no region picked, nothing said so). */}
+      {(!name.trim() || (kind === "exercise" && regions.length === 0)) && (
+        <p className="text-xs text-muted">
+          To add it:{" "}
+          {[
+            !name.trim() ? "give it a name" : null,
+            kind === "exercise" && regions.length === 0 ? "pick at least one body region" : null,
+          ]
+            .filter(Boolean)
+            .join(" and ")}
+          .
+        </p>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={() => void save()}

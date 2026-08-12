@@ -6,6 +6,7 @@
 // "now"; nothing here computes a verdict.
 
 import type { Pool } from "pg";
+import { dayOf } from "@/lib/dates";
 import type { LimitedActivity } from "@/lib/intake/fields";
 import type { GoalProgressRow } from "./signals";
 
@@ -15,7 +16,7 @@ export async function goalRows(pool: Pool, episodeId: string): Promise<GoalProgr
   const {
     rows: [base],
   } = await pool.query<{ activities: LimitedActivity[]; on: string }>(
-    `SELECT limited_activities AS activities, created_at::date::text AS "on"
+    `SELECT limited_activities AS activities, ${dayOf("created_at")}::text AS "on"
      FROM intakes
      WHERE episode_id = $1 AND limited_activities IS NOT NULL
      ORDER BY created_at DESC LIMIT 1`,
@@ -26,7 +27,7 @@ export async function goalRows(pool: Pool, episodeId: string): Promise<GoalProgr
   const {
     rows: [latest],
   } = await pool.query<{ ratings: LimitedActivity[]; on: string }>(
-    `SELECT ratings, created_at::date::text AS "on"
+    `SELECT ratings, ${dayOf("created_at")}::text AS "on"
      FROM goal_ratings WHERE episode_id = $1
      ORDER BY created_at DESC LIMIT 1`,
     [episodeId],

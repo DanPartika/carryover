@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { goalRows } from "@/lib/review/goals";
 
@@ -51,6 +52,10 @@ export async function GET(req: NextRequest) {
         approvedAt: p.approved_at,
         equipmentSuggestions: p.equipment_suggestions ?? [],
       };
+      // Today's log is matched by EXERCISE, not plan item: a check-in revision
+      // mints new item rows, and the ✓ a patient earned this morning must not
+      // vanish because their PT swapped something else this afternoon. The
+      // lateral prefers the row already linked to this item, then the newest.
       const { rows } = await pool.query(
         `SELECT pi.id, pi.exercise_id AS "exerciseId", pi.sets, pi.reps,
                 pi.hold_secs AS "holdSecs", pi.duration_mins AS "durationMins",
@@ -65,11 +70,18 @@ export async function GET(req: NextRequest) {
                 al.flag_for_pt AS "logFlagForPt"
          FROM plan_items pi
          JOIN exercises e ON e.id = pi.exercise_id
-         LEFT JOIN adherence_logs al
-           ON al.plan_item_id = pi.id AND al.log_date = CURRENT_DATE
+         LEFT JOIN LATERAL (
+           SELECT a.id, a.completed, a.sets_done, a.reps_done, a.duration_done_mins,
+                  a.pain, a.effort, a.note, a.flag_for_pt
+           FROM adherence_logs a
+           WHERE a.patient_user_id = $2 AND a.exercise_id = pi.exercise_id
+             AND a.log_date = ${APP_DAY}
+           ORDER BY (a.plan_item_id = pi.id) DESC NULLS LAST, a.created_at DESC
+           LIMIT 1
+         ) al ON true
          WHERE pi.plan_id = $1
          ORDER BY pi.sort, e.name`,
-        [plan.id],
+        [plan.id, user.id],
       );
       items = rows;
     }
@@ -80,7 +92,7 @@ export async function GET(req: NextRequest) {
   let checkin: unknown = null;
   if (episode) {
     const { rows } = await pool.query(
-      `SELECT id, kind, note, created_at::date::text AS "on"
+      `SELECT id, kind, note, ${dayOf("created_at")}::text AS "on"
        FROM checkin_requests WHERE episode_id = $1 AND resolved_at IS NULL`,
       [episode.id],
     );
@@ -103,17 +115,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // The strip's days come from the same clinic-day clock the logs are stamped
+  // with — building them from the server's own Date() put the whole strip a
+  // day off for anyone logging after 8pm Eastern.
+  const {
+    rows: [{ today }],
+  } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
   const { rows: streakRows } = await pool.query<{ log_date: string }>(
     `SELECT DISTINCT log_date::text FROM adherence_logs
-     WHERE patient_user_id = $1 AND completed AND log_date > CURRENT_DATE - $2::int
+     WHERE patient_user_id = $1 AND completed AND log_date > ${APP_DAY} - $2::int
      ORDER BY log_date`,
     [user.id, STREAK_DAYS],
   );
   const loggedDates = new Set(streakRows.map((r) => r.log_date));
   const streak = Array.from({ length: STREAK_DAYS }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (STREAK_DAYS - 1 - i));
-    const iso = d.toISOString().slice(0, 10);
+    const iso = new Date(Date.parse(today) - (STREAK_DAYS - 1 - i) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     return { date: iso, completed: loggedDates.has(iso) };
   });
 
@@ -126,7 +144,7 @@ export async function GET(req: NextRequest) {
             al.duration_done_mins AS "durationDoneMins", al.pain, al.note
      FROM adherence_logs al JOIN exercises e ON e.id = al.exercise_id
      WHERE al.patient_user_id = $1 AND al.plan_item_id IS NULL
-       AND al.log_date = CURRENT_DATE
+       AND al.log_date = ${APP_DAY}
      ORDER BY al.created_at`,
     [user.id],
   );

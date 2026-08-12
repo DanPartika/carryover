@@ -258,8 +258,218 @@ export function RowSteps({
   );
 }
 
+export type AdjustableItem = PlanItem & {
+  id: string;
+  kind: "exercise" | "modality";
+  rationale: string | null;
+  careTiming: "before" | "after" | null;
+};
+
+/** Parse an input's value, empty allowed while typing — snapping a default
+ *  back in turned a backspaced "7" into "57" on the phone. */
+function numOrNull(v: string, lo: number, hi: number): number | null {
+  if (v === "") return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return null;
+  return Math.min(Math.max(n, lo), hi);
+}
+
+const adjInput =
+  "w-14 rounded-md border border-edge bg-card px-1.5 py-1 text-center outline-none focus:border-accent";
+
+/** Edit ONE active-plan item in place (Dan's ask: "when I click into an
+ *  exercise I should be able to edit it"). Saving mints an 'adjustment'
+ *  revision — the approved record stays immutable, and the press is the
+ *  approval, same contract as the ↑/↓ pills. */
+export function AdjustItem({
+  item,
+  activePlanId,
+  patientName,
+  onChanged,
+  onClose,
+}: {
+  item: AdjustableItem;
+  activePlanId: string;
+  patientName: string;
+  onChanged: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const [sets, setSets] = useState<number | null>(item.sets);
+  const [reps, setReps] = useState<number | null>(item.reps);
+  const [holdSecs, setHoldSecs] = useState<number | null>(item.holdSecs);
+  const [durationMins, setDurationMins] = useState<number | null>(item.durationMins);
+  const [intensity, setIntensity] = useState(item.intensity ?? "");
+  const [freq, setFreq] = useState<number | null>(item.frequencyPerWeek);
+  const [location, setLocation] = useState(item.location);
+  const [careTiming, setCareTiming] = useState<"" | "before" | "after">(item.careTiming ?? "");
+  const [rationale, setRationale] = useState(item.rationale ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const firstName = patientName.split(" ")[0];
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/plans/${activePlanId}/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planItemId: item.id,
+          sets,
+          reps,
+          holdSecs,
+          durationMins,
+          intensity: intensity || null,
+          frequencyPerWeek: freq,
+          location,
+          rationale,
+          careTiming: careTiming || null,
+        }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(d?.error ?? `couldn't save that (${res.status})`);
+        return;
+      }
+      onClose();
+      await onChanged();
+    } catch {
+      setError("network error — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-edge bg-card p-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-3">
+        {item.dosageType === "time" ? (
+          <>
+            <label className="flex items-center gap-1 text-muted">
+              <input
+                type="number" min={1} max={240} value={durationMins ?? ""}
+                onChange={(e) => setDurationMins(numOrNull(e.target.value, 1, 240))}
+                className={adjInput}
+              />
+              min
+            </label>
+            <input
+              value={intensity}
+              onChange={(e) => setIntensity(e.target.value)}
+              placeholder="intensity (level 2…)"
+              className="w-36 rounded-md border border-edge bg-card px-2 py-1 outline-none focus:border-accent"
+            />
+          </>
+        ) : (
+          <>
+            <label className="flex items-center gap-1 text-muted">
+              <input
+                type="number" min={1} max={10} value={sets ?? ""}
+                onChange={(e) => setSets(numOrNull(e.target.value, 1, 10))}
+                className={adjInput}
+              />
+              sets
+            </label>
+            {item.dosageType === "hold" ? (
+              <label className="flex items-center gap-1 text-muted">
+                hold
+                <input
+                  type="number" min={1} max={300} value={holdSecs ?? ""}
+                  onChange={(e) => setHoldSecs(numOrNull(e.target.value, 1, 300))}
+                  className={adjInput}
+                />
+                s
+              </label>
+            ) : (
+              <label className="flex items-center gap-1 text-muted">
+                ×
+                <input
+                  type="number" min={1} max={50} value={reps ?? ""}
+                  onChange={(e) => setReps(numOrNull(e.target.value, 1, 50))}
+                  className={adjInput}
+                />
+                reps
+              </label>
+            )}
+          </>
+        )}
+        <label className="flex items-center gap-1 text-muted">
+          <input
+            type="number" min={1} max={14} value={freq ?? ""}
+            onChange={(e) => setFreq(numOrNull(e.target.value, 1, 14))}
+            className={adjInput}
+          />
+          /wk
+        </label>
+        <select
+          value={location}
+          onChange={(e) => setLocation(e.target.value as AdjustableItem["location"])}
+          className="rounded-md border border-edge bg-card px-1.5 py-1"
+        >
+          <option value="home">home</option>
+          <option value="office">office</option>
+          <option value="both">both</option>
+        </select>
+        {item.kind === "modality" && (
+          <select
+            value={careTiming}
+            onChange={(e) => setCareTiming(e.target.value as "" | "before" | "after")}
+            className="rounded-md border border-edge bg-card px-1.5 py-1"
+          >
+            <option value="">anytime</option>
+            <option value="before">before exercises</option>
+            <option value="after">after exercises</option>
+          </select>
+        )}
+      </div>
+      <textarea
+        value={rationale}
+        onChange={(e) => setRationale(e.target.value)}
+        rows={2}
+        placeholder={`Why (optional) — ${firstName} reads this`}
+        className="w-full rounded-md border border-edge bg-card px-2 py-1.5 outline-none focus:border-accent"
+      />
+      {error && <p className="text-flag">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => void save()}
+          disabled={busy}
+          className="rounded-lg bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+        >
+          {busy ? "Saving…" : "Save change"}
+        </button>
+        <button onClick={onClose} className="text-muted underline hover:text-ink">
+          cancel
+        </button>
+        <span className="text-muted">Takes effect immediately.</span>
+      </div>
+    </div>
+  );
+}
+
 /** The whole-plan doors, at the foot of the plan: redraft with evidence, or
  *  record that nothing changes (which resets the review clock). */
+const LEAN_OPTIONS = [
+  ["harder", "Push harder"],
+  ["same", "Hold about here"],
+  ["easier", "Ease off"],
+] as const;
+
+const FOCUS_OPTIONS = [
+  "more strength",
+  "more mobility & stretching",
+  "balance work",
+  "endurance / cardio",
+] as const;
+
+const SIZE_OPTIONS = [
+  ["fewer", "Fewer exercises"],
+  ["same", "About this many"],
+  ["more", "More exercises"],
+] as const;
+
 export function PlanDoors({
   episodeId,
   patientName,
@@ -277,10 +487,36 @@ export function PlanDoors({
   revamping: boolean;
   onChanged: () => void | Promise<void>;
 }) {
+  // The redraft questionnaire (Dan: "It should ask me for information. Make
+  // it dumb easy"). Three chip questions + a free line, composed into the
+  // steer the AI reads. Every answer optional — chips beat a blank textarea
+  // because they name the decisions a PT is actually making.
+  const [asking, setAsking] = useState(false);
+  const [lean, setLean] = useState<"harder" | "same" | "easier" | null>(null);
+  const [focus, setFocus] = useState<string[]>([]);
+  const [size, setSize] = useState<"fewer" | "same" | "more" | null>(null);
   const [steer, setSteer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstName = patientName.split(" ")[0];
+
+  const chip = (on: boolean) =>
+    `rounded-full border px-3 py-1 text-xs ${
+      on ? "border-accent-deep bg-accent-deep text-white" : "border-edge text-muted hover:bg-raise"
+    }`;
+
+  function composedSteer(): string {
+    const parts: string[] = [];
+    if (lean === "harder") parts.push("The PT wants the next phase harder overall.");
+    if (lean === "same") parts.push("The PT wants the overall difficulty held about level.");
+    if (lean === "easier") parts.push("The PT wants the next phase easier overall.");
+    if (focus.length) parts.push(`Add or emphasize: ${focus.join(", ")}.`);
+    if (size === "fewer") parts.push("Fewer exercises than the current plan.");
+    if (size === "more") parts.push("More exercises than the current plan.");
+    if (size === "same") parts.push("Keep the plan about the same size.");
+    if (steer.trim()) parts.push(steer.trim());
+    return parts.join(" ");
+  }
 
   async function noChange() {
     setBusy(true);
@@ -312,30 +548,100 @@ export function PlanDoors({
           Change anything whenever you want to.
         </p>
       )}
-      <textarea
-        value={steer}
-        onChange={(e) => setSteer(e.target.value)}
-        rows={2}
-        placeholder="Anything the AI should know for the next phase (optional)"
-        className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
-      />
+      {!asking ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setAsking(true)}
+            disabled={revamping || busy}
+            className="rounded-lg bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+          >
+            {revamping ? "Drafting…" : "✨ Draft the next phase"}
+          </button>
+          <button
+            onClick={() => void noChange()}
+            disabled={busy || revamping}
+            className="rounded-lg border border-edge px-4 py-2 text-sm font-medium hover:bg-raise disabled:opacity-40"
+          >
+            {busy ? "Saving…" : "No change today"}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3 rounded-lg border border-edge bg-card p-3">
+          <div>
+            <p className="text-xs font-semibold text-muted">
+              Which way should the next phase lean?
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {LEAN_OPTIONS.map(([v, label]) => (
+                <button key={v} onClick={() => setLean(lean === v ? null : v)} className={chip(lean === v)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted">Anything to add or emphasize?</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {FOCUS_OPTIONS.map((f) => (
+                <button
+                  key={f}
+                  onClick={() =>
+                    setFocus((prev) =>
+                      prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f],
+                    )
+                  }
+                  className={chip(focus.includes(f))}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted">How big should it be?</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {SIZE_OPTIONS.map(([v, label]) => (
+                <button key={v} onClick={() => setSize(size === v ? null : v)} className={chip(size === v)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            value={steer}
+            onChange={(e) => setSteer(e.target.value)}
+            rows={2}
+            placeholder="Anything else the AI should know (optional)"
+            className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => void onRevamp(composedSteer())}
+              disabled={revamping}
+              className="rounded-lg bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+            >
+              {revamping ? "Drafting…" : "Draft it"}
+            </button>
+            <button
+              onClick={() => {
+                // Full reset — abandoned chips must not silently ride along
+                // in a redraft the PT starts fresh next week.
+                setAsking(false);
+                setLean(null);
+                setFocus([]);
+                setSize(null);
+                setSteer("");
+              }}
+              disabled={revamping}
+              className="text-xs text-muted underline hover:text-ink disabled:opacity-40"
+            >
+              cancel
+            </button>
+            <span className="text-xs text-muted">Skip any question — it all helps, none is required.</span>
+          </div>
+        </div>
+      )}
       {error && <p className="text-sm text-flag">{error}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => void onRevamp(steer)}
-          disabled={revamping || busy}
-          className="rounded-lg bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
-        >
-          {revamping ? "Drafting…" : "✨ Draft the next phase"}
-        </button>
-        <button
-          onClick={() => void noChange()}
-          disabled={busy || revamping}
-          className="rounded-lg border border-edge px-4 py-2 text-sm font-medium hover:bg-raise disabled:opacity-40"
-        >
-          {busy ? "Saving…" : "No change today"}
-        </button>
-      </div>
       <p className="text-xs text-muted">
         The draft reads {firstName}&apos;s logs, pain scores and notes since the current plan
         was approved — you still approve it before anything changes.

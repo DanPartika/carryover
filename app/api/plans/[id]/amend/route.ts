@@ -170,10 +170,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       ],
     );
 
-    await client.query(
-      `UPDATE plans SET status = 'retired', retired_at = now() WHERE id = $1`,
+    // AND status='active' + rowCount is the race guard: two tabs both read
+    // "active" before either committed; the loser must abort, not re-retire a
+    // retired plan and mint a second active one. The plans_one_active index
+    // (0015) is the backstop.
+    const { rowCount: retired } = await client.query(
+      `UPDATE plans SET status = 'retired', retired_at = now()
+       WHERE id = $1 AND status = 'active'`,
       [plan.id],
     );
+    if (!retired) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { error: "this plan was just changed elsewhere — reload to see it" },
+        { status: 409 },
+      );
+    }
     await client.query(
       `UPDATE plans SET status = 'active', approved_by = $2, approved_at = now()
        WHERE id = $1`,

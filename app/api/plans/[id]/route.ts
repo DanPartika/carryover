@@ -75,6 +75,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const exerciseIds = body.items.map((i) => String(i.exerciseId ?? ""));
+  // One row per exercise per plan. Logging, the Today screen's ✓, and the
+  // compliance math all key on the EXERCISE now — a duplicate would make two
+  // prescriptions share one log and silently clobber each other's entries.
+  if (new Set(exerciseIds).size !== exerciseIds.length) {
+    return NextResponse.json(
+      { error: "an exercise can only appear once per plan" },
+      { status: 400 },
+    );
+  }
   const { rows: valid } = await pool.query<{ id: string; kind: string }>(
     "SELECT id, kind FROM exercises WHERE id = ANY($1::uuid[]) AND archived_at IS NULL",
     [exerciseIds.filter((s) => /^[0-9a-f-]{36}$/.test(s))],

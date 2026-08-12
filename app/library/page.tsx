@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
+import { useBootstrap } from "@/components/Bootstrap";
 import ExerciseComposer from "@/components/ExerciseComposer";
 import { imageFitClass, imageSrc, isOwnedArt } from "@/lib/media";
 
@@ -46,9 +47,20 @@ type Detail = {
   };
   equipment: { slug: string; name: string; kind: string }[];
   progressions: {
-    easier: { id: string; name: string; note: string | null }[];
-    harder: { id: string; name: string; note: string | null }[];
+    easier: ChainEdge[];
+    harder: ChainEdge[];
   };
+};
+
+type ChainEdge = {
+  id: string;
+  name: string;
+  difficulty: number | null;
+  note: string | null;
+  clinicId: string | null;
+  /** True when the viewer's own clinic charted this edge — global corridor
+   *  edges are read-only in-app. */
+  removable: boolean;
 };
 
 const REGIONS = [
@@ -77,6 +89,200 @@ const POSITIONS = [
 
 const PAGE = 30;
 
+/** The chain around one exercise, with authoring for PTs (Dan's ask:
+ *  "exercises should be seen as a chain progression in the library — the
+ *  next harder step is this"). Edges a PT charts here belong to their clinic
+ *  and drive their own ↑/↓ swap pills on active plans; the global corridor
+ *  chains render read-only beside them. */
+function ChainSection({
+  detail,
+  clinicId,
+  onChanged,
+  onOpen,
+}: {
+  detail: Detail;
+  /** The viewer's PT/admin clinic — null for everyone who can't chart. */
+  clinicId: string | null;
+  onChanged: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState<"harder" | "easier" | null>(null);
+  const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<{ id: string; name: string; difficulty: number | null }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { easier, harder } = detail.progressions;
+  const linked = new Set([detail.exercise.id, ...easier.map((e) => e.id), ...harder.map((e) => e.id)]);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    const q = search.trim();
+    timer.current = setTimeout(
+      async () => {
+        if (!q || !adding) {
+          setHits([]);
+          return;
+        }
+        const res = await apiFetch(`/api/exercises?${new URLSearchParams({ q, limit: "6" })}`);
+        if (res.ok) {
+          const d = (await res.json()) as { items: { id: string; name: string; difficulty: number | null }[] };
+          setHits(d.items.filter((h) => !linked.has(h.id)));
+        }
+      },
+      q ? 250 : 0,
+    );
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+    // linked is derived from detail, which is covered by onChanged remounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, adding]);
+
+  async function chart(toExerciseId: string) {
+    if (!adding || !clinicId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/exercises/${detail.exercise.id}/progressions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicId, toExerciseId, direction: adding }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(d?.error ?? `couldn't chart that (${res.status})`);
+        return;
+      }
+      setAdding(null);
+      setSearch("");
+      setHits([]);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unchart(edge: ChainEdge, direction: "harder" | "easier") {
+    if (!clinicId) return;
+    const params = new URLSearchParams({ clinicId, toExerciseId: edge.id, direction });
+    const res = await apiFetch(
+      `/api/exercises/${detail.exercise.id}/progressions?${params}`,
+      { method: "DELETE" },
+    );
+    if (res.ok) onChanged();
+  }
+
+  const row = (p: ChainEdge, direction: "harder" | "easier") => (
+    <div key={`${direction}-${p.id}`} className="mt-1 flex items-center gap-2">
+      <button
+        onClick={() => onOpen(p.id)}
+        className="block text-left text-muted hover:text-ink"
+        title={p.note ?? undefined}
+      >
+        {direction === "easier" ? "← easier: " : "→ harder: "}
+        <span className="underline">{p.name}</span>
+        {p.difficulty ? <span className="ml-1 text-xs">lvl {p.difficulty}</span> : null}
+        {p.clinicId ? <span className="ml-1 text-xs">(your clinic)</span> : null}
+      </button>
+      {/* clinicId gate: a patient of the charting clinic also gets
+          removable:true in the data, but can't unchart — no dead button. */}
+      {clinicId && p.removable && (
+        <button
+          onClick={() => void unchart(p, direction)}
+          className="text-xs text-muted hover:text-flag"
+          title="Remove this step (your clinic charted it)"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+
+  if (easier.length === 0 && harder.length === 0 && !clinicId) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-edge bg-raise/50 p-3 text-sm">
+      <div className="font-semibold">Progression chain</div>
+      {easier.length === 0 && harder.length === 0 && (
+        <p className="mt-1 text-xs text-muted">
+          Nothing charted yet — chart the easier and harder steps and this exercise joins
+          the one-tap swap pills on your plans.
+        </p>
+      )}
+      {easier.map((p) => row(p, "easier"))}
+      {harder.map((p) => row(p, "harder"))}
+
+      {clinicId && !adding && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setAdding("easier");
+              setError(null);
+            }}
+            className="rounded-full border border-edge px-2.5 py-0.5 text-xs text-muted hover:bg-raise"
+          >
+            ＋ chart an easier step
+          </button>
+          <button
+            onClick={() => {
+              setAdding("harder");
+              setError(null);
+            }}
+            className="rounded-full border border-edge px-2.5 py-0.5 text-xs text-muted hover:bg-raise"
+          >
+            ＋ chart a harder step
+          </button>
+        </div>
+      )}
+      {clinicId && adding && (
+        <div className="relative mt-2">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search the ${adding} step…`}
+              className="min-w-0 flex-1 rounded-lg border border-edge bg-card px-3 py-1.5 text-sm outline-none focus:border-accent"
+            />
+            <button
+              onClick={() => {
+                setAdding(null);
+                setSearch("");
+                setHits([]);
+                setError(null);
+              }}
+              className="text-xs text-muted underline hover:text-ink"
+            >
+              cancel
+            </button>
+          </div>
+          {search.trim() && (
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-card shadow-lg">
+              {hits.map((h) => (
+                <li key={h.id}>
+                  <button
+                    onClick={() => void chart(h.id)}
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-raise"
+                  >
+                    {h.name}
+                    {h.difficulty ? (
+                      <span className="ml-2 text-xs text-muted">lvl {h.difficulty}</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+              {hits.length === 0 && <li className="px-3 py-2 text-sm text-muted">Nothing matches.</li>}
+            </ul>
+          )}
+          {error && <p className="mt-1 text-xs text-flag">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DifficultyDots({ level }: { level: number | null }) {
   if (!level) return null;
   return (
@@ -93,6 +299,11 @@ function DifficultyDots({ level }: { level: number | null }) {
 
 export default function LibraryPage() {
   const { enabled, loading, session } = useAuth();
+  const { boot } = useBootstrap();
+  // The clinic this viewer can chart chain steps for — first PT/admin
+  // membership. Patients (and PTs of no clinic) browse read-only.
+  const chartClinicId =
+    boot?.memberships.find((m) => m.role === "pt" || m.role === "admin")?.clinicId ?? null;
   const [q, setQ] = useState("");
   const [region, setRegion] = useState("");
   const [equipment, setEquipment] = useState("");
@@ -425,31 +636,13 @@ export default function LibraryPage() {
               </p>
             )}
 
-            {(detail.progressions.easier.length > 0 || detail.progressions.harder.length > 0) && (
-              <div className="mt-4 rounded-lg border border-edge bg-raise/50 p-3 text-sm">
-                <div className="font-semibold">Progression chain</div>
-                {detail.progressions.easier.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => void openDetail(p.id)}
-                    className="mt-1 block text-left text-muted hover:text-ink"
-                    title={p.note ?? undefined}
-                  >
-                    ← easier: <span className="underline">{p.name}</span>
-                  </button>
-                ))}
-                {detail.progressions.harder.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => void openDetail(p.id)}
-                    className="mt-1 block text-left text-muted hover:text-ink"
-                    title={p.note ?? undefined}
-                  >
-                    → harder: <span className="underline">{p.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <ChainSection
+              key={detail.exercise.id}
+              detail={detail}
+              clinicId={chartClinicId}
+              onChanged={() => void openDetail(detail.exercise.id)}
+              onOpen={(id) => void openDetail(id)}
+            />
 
             {detail.exercise.clinic_id && (
               <div className="mt-4 rounded-lg border border-edge p-3 text-xs">

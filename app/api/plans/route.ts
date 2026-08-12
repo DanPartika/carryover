@@ -15,6 +15,7 @@ import { draftPlan, planModel, type IntakeForPrompt, type ProgressContext } from
 import { factSheet } from "@/lib/ai/summary";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
+import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { dosageLine } from "@/lib/dosage";
 import { requestLabel, type CheckinRequest } from "@/lib/review/due";
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
               i.night_pain, i.worst_time, i.limited_activities, i.assistive_device,
               i.conditions, i.red_flags, i.medications, i.surgeries,
               i.imaging, i.prior_treatment, i.occupation, i.activity_level,
-              EXTRACT(YEAR FROM CURRENT_DATE)::int - u.birth_year AS age
+              EXTRACT(YEAR FROM ${APP_DAY})::int - u.birth_year AS age
        FROM intakes i
        JOIN episodes ep ON ep.id = i.episode_id
        JOIN users u ON u.id = ep.patient_user_id
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     const {
       rows: [activePlan],
     } = await pool.query<{ id: string; approvedOn: string }>(
-      `SELECT id, approved_at::date::text AS "approvedOn"
+      `SELECT id, ${dayOf("approved_at")}::text AS "approvedOn"
        FROM plans WHERE episode_id = $1 AND status = 'active'`,
       [episode.id],
     );
@@ -151,7 +152,7 @@ export async function POST(req: NextRequest) {
       const {
         rows: [request],
       } = await pool.query<CheckinRequest>(
-        `SELECT kind, note, created_at::date::text AS "on"
+        `SELECT kind, note, ${dayOf("created_at")}::text AS "on"
          FROM checkin_requests WHERE episode_id = $1 AND resolved_at IS NULL`,
         [episode.id],
       );

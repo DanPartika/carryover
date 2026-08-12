@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { APP_DAY } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 type Body = {
@@ -59,20 +60,40 @@ export async function POST(req: NextRequest) {
     if (!owned) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     exerciseId = owned.exercise_id;
   } else {
+    // Same visibility rule as the library browse — without it, this endpoint
+    // is an existence oracle for other clinics' private exercises (and their
+    // names would render right back in this patient's own log list).
     const {
       rows: [ex],
     } = await pool.query<{ id: string }>(
-      "SELECT id FROM exercises WHERE id = $1 AND archived_at IS NULL",
-      [body.exerciseId],
+      `SELECT e.id FROM exercises e
+       WHERE e.id = $1 AND e.archived_at IS NULL
+         AND (e.clinic_id IS NULL OR e.shared OR e.clinic_id IN
+              (SELECT clinic_id FROM clinic_members WHERE user_id = $2 AND active))`,
+      [body.exerciseId, user.id],
     );
     if (!ex) return NextResponse.json({ error: "unknown exercise" }, { status: 400 });
     exerciseId = ex.id;
   }
 
-  const values = [
-    body.planItemId ?? null,
-    exerciseId,
-    user.id,
+  // Canonicalize to the ACTIVE plan's item for this exercise, whichever
+  // button the log came through. A stale tab posting a retired revision's
+  // item id must not re-point today's row backward, and an ad-hoc log of a
+  // prescribed exercise IS that session done — it should light the ✓ and
+  // count, not sit beside the prescription as a stranger.
+  const {
+    rows: [activeItem],
+  } = await pool.query<{ id: string }>(
+    `SELECT pi.id FROM plan_items pi
+     JOIN plans p ON p.id = pi.plan_id AND p.status = 'active'
+     JOIN episodes ep ON ep.id = p.episode_id
+     WHERE ep.patient_user_id = $1 AND pi.exercise_id = $2
+     ORDER BY pi.sort LIMIT 1`,
+    [user.id, exerciseId],
+  );
+  const effectiveItemId = activeItem?.id ?? null;
+
+  const fields = [
     body.completed ?? true,
     clampOrNull(body.setsDone, 0, 20),
     clampOrNull(body.repsDone, 0, 100),
@@ -83,30 +104,61 @@ export async function POST(req: NextRequest) {
     body.flagForPt ?? false,
   ];
 
-  const setClause = `completed = EXCLUDED.completed, sets_done = EXCLUDED.sets_done,
-       reps_done = EXCLUDED.reps_done, duration_done_mins = EXCLUDED.duration_done_mins,
-       pain = EXCLUDED.pain, effort = EXCLUDED.effort, note = EXCLUDED.note,
-       flag_for_pt = EXCLUDED.flag_for_pt, updated_at = now()`;
-
-  // Two partial unique indexes back these two conflict targets (migration
-  // 0009): prescribed logs are unique per plan item per day, ad-hoc ones per
-  // exercise per day. ON CONFLICT needs the matching index named explicitly —
-  // it cannot infer a partial one from the column list alone.
-  const conflict = body.planItemId
-    ? "(plan_item_id, log_date) WHERE plan_item_id IS NOT NULL"
-    : "(patient_user_id, exercise_id, log_date) WHERE plan_item_id IS NULL";
-
+  // One row per exercise per day, whichever button it came through. Today's
+  // row is found by EXERCISE: plan revisions mint new item rows, and a log
+  // saved this morning must stay this evening's row — re-pointed to the
+  // current item — not a stranded duplicate. Preferring the row that already
+  // holds the effective item id means the UPDATE can never collide with the
+  // (plan_item_id, log_date) unique index: only one row can hold it.
   const {
-    rows: [log],
-  } = await pool.query(
-    `INSERT INTO adherence_logs
-       (plan_item_id, exercise_id, patient_user_id, completed, sets_done, reps_done,
-        duration_done_mins, pain, effort, note, flag_for_pt)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-     ON CONFLICT ${conflict} DO UPDATE SET ${setClause}
-     RETURNING id, log_date AS "logDate"`,
-    values,
+    rows: [existing],
+  } = await pool.query<{ id: string }>(
+    `SELECT id FROM adherence_logs
+     WHERE patient_user_id = $1 AND exercise_id = $2 AND log_date = ${APP_DAY}
+     ORDER BY (plan_item_id IS NOT DISTINCT FROM $3::uuid) DESC,
+              (plan_item_id IS NOT NULL) DESC, created_at DESC
+     LIMIT 1`,
+    [user.id, exerciseId, effectiveItemId],
   );
+
+  let log: { id: string; logDate: string };
+  if (existing) {
+    const {
+      rows: [updated],
+    } = await pool.query<{ id: string; logDate: string }>(
+      `UPDATE adherence_logs
+       SET completed = $2, sets_done = $3, reps_done = $4, duration_done_mins = $5,
+           pain = $6, effort = $7, note = $8, flag_for_pt = $9,
+           plan_item_id = COALESCE($10, plan_item_id), updated_at = now()
+       WHERE id = $1
+       RETURNING id, log_date AS "logDate"`,
+      [existing.id, ...fields, effectiveItemId],
+    );
+    log = updated;
+  } else {
+    // The partial unique indexes (migration 0009) still stand as the race
+    // backstop: prescribed rows unique per plan item per day, ad-hoc per
+    // exercise per day.
+    const conflict = effectiveItemId
+      ? "(plan_item_id, log_date) WHERE plan_item_id IS NOT NULL"
+      : "(patient_user_id, exercise_id, log_date) WHERE plan_item_id IS NULL";
+    const {
+      rows: [inserted],
+    } = await pool.query<{ id: string; logDate: string }>(
+      `INSERT INTO adherence_logs
+         (plan_item_id, exercise_id, patient_user_id, completed, sets_done, reps_done,
+          duration_done_mins, pain, effort, note, flag_for_pt)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT ${conflict} DO UPDATE SET
+         completed = EXCLUDED.completed, sets_done = EXCLUDED.sets_done,
+         reps_done = EXCLUDED.reps_done, duration_done_mins = EXCLUDED.duration_done_mins,
+         pain = EXCLUDED.pain, effort = EXCLUDED.effort, note = EXCLUDED.note,
+         flag_for_pt = EXCLUDED.flag_for_pt, updated_at = now()
+       RETURNING id, log_date AS "logDate"`,
+      [effectiveItemId, exerciseId, user.id, ...fields],
+    );
+    log = inserted;
+  }
 
   return NextResponse.json({ ok: true, log });
 }

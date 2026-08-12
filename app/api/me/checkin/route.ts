@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const KINDS = ["too_easy", "too_hard", "something_changed"];
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (episode_id) WHERE resolved_at IS NULL
      DO UPDATE SET kind = EXCLUDED.kind, note = EXCLUDED.note, created_at = now()
-     RETURNING id, kind, note, created_at::date::text AS "on"`,
+     RETURNING id, kind, note, ${dayOf("created_at")}::text AS "on"`,
     [episodeId, user.id, body.kind, body.note?.trim().slice(0, 500) || null],
   );
   return NextResponse.json({ checkin: row }, { status: 201 });

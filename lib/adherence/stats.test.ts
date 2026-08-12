@@ -17,8 +17,10 @@ const item = (over: Partial<StatItem> & { id: string }): StatItem => ({
   ...over,
 });
 
-const log = (planItemId: string, logDate: string, over: Partial<StatLog> = {}): StatLog => ({
-  planItemId,
+// Logs are matched to items by EXERCISE (revisions mint new item rows), so
+// the helper mirrors item()'s exerciseId derivation.
+const log = (itemId: string, logDate: string, over: Partial<StatLog> = {}): StatLog => ({
+  exerciseId: `ex-${itemId}`,
   logDate,
   completed: true,
   pain: null,
@@ -112,6 +114,50 @@ describe("compliance", () => {
     const c = computeCompliance([item({ id: "a", location: "office" })], [], 28);
     expect(c.items).toEqual([]);
     expect(c.scorable).toBe(false);
+  });
+
+  it("keeps credit across plan revisions — the exercise is the identity", () => {
+    // The log was written under a retired plan's item row ("old-a"); the
+    // active plan carries the same exercise under a new row. Dan's "0/2" bug:
+    // keying by plan item id zeroed this at every check-in.
+    const active = item({ id: "new-a", exerciseId: "ex-quad-set" });
+    const logs = [
+      { exerciseId: "ex-quad-set", logDate: "2026-07-20", completed: true, pain: null },
+      { exerciseId: "ex-quad-set", logDate: "2026-07-21", completed: true, pain: null },
+    ];
+    const c = computeCompliance([active], logs, 7);
+    expect(c.completed).toBe(2);
+  });
+
+  it("clamps a freshly added exercise's expectation to its own age", () => {
+    // Amended in 3 days ago (scoredDays 3): it owes 3 days of a 7/wk dose,
+    // not the window's 28.
+    const c = computeCompliance(
+      [item({ id: "a", frequencyPerWeek: 7, scoredDays: 3 })],
+      [],
+      28,
+    );
+    expect(c.items[0].expected).toBe(3);
+  });
+
+  it("never lets scoredDays exceed the window", () => {
+    const c = computeCompliance(
+      [item({ id: "a", frequencyPerWeek: 7, scoredDays: 99 })],
+      [],
+      7,
+    );
+    expect(c.items[0].expected).toBe(7);
+  });
+
+  it("ignores logs from before the exercise was prescribed", () => {
+    // Patient iced ad-hoc for weeks, then ice was formally amended in on the
+    // 25th. Without scoredFrom this reads 3-of-2 and drowns the episode
+    // percentage in phantom over-compliance.
+    const it_ = item({ id: "a", frequencyPerWeek: 7, scoredDays: 2, scoredFrom: "2026-07-25" });
+    const logs = ["23", "24", "25"].map((d) => log("a", `2026-07-${d}`));
+    const c = computeCompliance([it_], logs, 28);
+    expect(c.items[0].expected).toBe(2);
+    expect(c.items[0].completed).toBe(1);
   });
 });
 

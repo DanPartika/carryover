@@ -12,18 +12,30 @@
 
 export type StatItem = {
   id: string;
-  /** The exercise behind the plan item. Carried through to ItemCompliance so
-   *  the dashboard can open this exercise's whole history — logs from before
-   *  the last plan revision point at a RETIRED plan item, so following the
-   *  plan item id would silently truncate the record at the last check-in. */
+  /** The exercise behind the plan item — the identity the scoring runs on.
+   *  Plan revisions (a swap, an amendment, a dosage tweak) mint NEW plan_item
+   *  rows every time, so scoring by plan item id silently zeroed the record
+   *  at every check-in (Dan's "0/2" bug). The exercise is what persists. */
   exerciseId: string;
   name: string;
   frequencyPerWeek: number;
   location: "office" | "home" | "both";
+  /** How many days of the window this exercise was actually prescribed —
+   *  an exercise amended in three days ago shouldn't owe a month of sessions.
+   *  Callers compute it from the plan lineage; absent means the full window. */
+  scoredDays?: number;
+  /** First day ('yyyy-mm-dd') this exercise counts from — logs before it are
+   *  ignored for THIS item. Without it, a patient who iced ad-hoc for weeks
+   *  and then had ice formally prescribed would score 20-of-2 and drown the
+   *  episode percentage. Set alongside scoredDays. */
+  scoredFrom?: string;
 };
 
 export type StatLog = {
-  planItemId: string;
+  /** Matched to StatItem by EXERCISE, not plan item — see StatItem. Ad-hoc
+   *  logs of a prescribed exercise count too: the patient did the thing,
+   *  whichever button they reached it through. */
+  exerciseId: string;
   logDate: string; // yyyy-mm-dd
   completed: boolean;
   pain: number | null;
@@ -69,14 +81,16 @@ export function daysBetween(from: string, to: string): number {
 }
 
 /** The scoring window: `requested` days back from today, but never reaching
- *  before the plan was approved. Inclusive of both ends, so a plan approved
- *  today gives a window of 1 day, never 0. */
+ *  before the PROGRAM started — the episode's first approved plan, not the
+ *  latest revision. A one-exercise swap used to restart this clock and wipe
+ *  the week's record. Inclusive of both ends, so a program started today
+ *  gives a window of 1 day, never 0. */
 export function effectiveWindowDays(
   requested: number,
-  planApprovedOn: string,
+  programStartedOn: string,
   today: string,
 ): number {
-  const sincePlan = daysBetween(planApprovedOn, today) + 1;
+  const sincePlan = daysBetween(programStartedOn, today) + 1;
   return Math.max(1, Math.min(requested, sincePlan));
 }
 
@@ -101,26 +115,29 @@ export function computeCompliance(
   windowDays: number,
 ): Compliance {
   const home = items.filter(isHome);
-  const byItem = new Map<string, StatLog[]>();
+  const byExercise = new Map<string, StatLog[]>();
   for (const l of logs) {
     if (!l.completed) continue;
-    const list = byItem.get(l.planItemId);
+    const list = byExercise.get(l.exerciseId);
     if (list) list.push(l);
-    else byItem.set(l.planItemId, [l]);
+    else byExercise.set(l.exerciseId, [l]);
   }
 
   const rows: ItemCompliance[] = home.map((it) => {
-    const done = byItem.get(it.id) ?? [];
-    // One session per calendar day per item — the adherence_logs UNIQUE
-    // constraint already enforces this, but the math shouldn't depend on it.
+    const done = (byExercise.get(it.exerciseId) ?? []).filter(
+      (l) => !it.scoredFrom || l.logDate >= it.scoredFrom,
+    );
+    // One session per calendar day per exercise — two rows on the same day
+    // (an ad-hoc log beside a prescribed one) are one session done.
     const days = new Set(done.map((l) => l.logDate));
     const lastDone = days.size ? [...days].sort().at(-1)! : null;
+    const scoredDays = Math.max(1, Math.min(it.scoredDays ?? windowDays, windowDays));
     return {
       id: it.id,
       exerciseId: it.exerciseId,
       name: it.name,
       frequencyPerWeek: it.frequencyPerWeek,
-      expected: expectedFor(it.frequencyPerWeek, windowDays),
+      expected: expectedFor(it.frequencyPerWeek, scoredDays),
       completed: days.size,
       lastDone,
     };

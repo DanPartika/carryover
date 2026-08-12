@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { canManage, rolesInClinic } from "@/lib/auth/roles";
 import { getPool } from "@/lib/db/pool";
 import { canEditExercise, viewerClinicIds, visibleToViewerSql } from "@/lib/library/visibility";
 
@@ -39,18 +40,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     [id],
   );
 
-  const { rows: harder } = await pool.query(
-    `SELECT x.id, x.name, p.note FROM exercise_progressions p
-     JOIN exercises x ON x.id = p.to_exercise_id
-     WHERE p.from_exercise_id = $1 AND x.archived_at IS NULL ORDER BY x.name`,
-    [id],
-  );
-  const { rows: easier } = await pool.query(
-    `SELECT x.id, x.name, p.note FROM exercise_progressions p
-     JOIN exercises x ON x.id = p.from_exercise_id
-     WHERE p.to_exercise_id = $1 AND x.archived_at IS NULL ORDER BY x.name`,
-    [id],
-  );
+  // Neighbors respect BOTH visibilities: the neighboring exercise's (a
+  // private exercise's name must not leak through a chain edge) and the
+  // edge's own (a step one clinic charted is that clinic's judgment).
+  // `removable` marks the edges this viewer's clinic wrote — global corridor
+  // edges are read-only in-app, same rule as the built-in library rows.
+  const neighborSql = (joinCol: string, whereCol: string) =>
+    `SELECT x.id, x.name, x.difficulty, p.note, p.clinic_id AS "clinicId",
+            COALESCE(p.clinic_id = ANY($2), false) AS removable
+     FROM exercise_progressions p
+     JOIN exercises x ON x.id = p.${joinCol}
+     WHERE p.${whereCol} = $1 AND x.archived_at IS NULL
+       AND (p.clinic_id IS NULL OR p.clinic_id = ANY($2))
+       AND ${visibleToViewerSql("$2", "x")}
+     ORDER BY x.name`;
+  const { rows: harder } = await pool.query(neighborSql("to_exercise_id", "from_exercise_id"), [
+    id,
+    clinics,
+  ]);
+  const { rows: easier } = await pool.query(neighborSql("from_exercise_id", "to_exercise_id"), [
+    id,
+    clinics,
+  ]);
 
   return NextResponse.json({ exercise, equipment, progressions: { easier, harder } });
 }
@@ -79,6 +90,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       { error: "only the clinic that wrote an exercise can change it" },
       { status: 403 },
     );
+  }
+  // Membership isn't authorship: viewerClinicIds includes PATIENTS (they need
+  // to read their own clinic's exercises), so without a role gate a patient
+  // could rename, share, or archive their clinic's library.
+  if (!canManage(await rolesInClinic(pool, user.id, existing.clinic_id!))) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   const patch = (await req.json().catch(() => null)) as {

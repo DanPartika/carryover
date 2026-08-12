@@ -15,11 +15,13 @@ import type { Pool } from "pg";
 import {
   computeCompliance,
   computePainTrend,
+  daysBetween,
   effectiveWindowDays,
   windowStart,
   type StatItem,
   type StatLog,
 } from "@/lib/adherence/stats";
+import { APP_DAY, dayOf } from "@/lib/dates";
 import type { LimitedActivity } from "@/lib/intake/fields";
 import {
   computeReviewSignal,
@@ -102,16 +104,23 @@ export async function reviewSignals(
 
   const {
     rows: [{ today }],
-  } = await pool.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+  } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
 
   const { rows: plans } = await pool.query<{
     episodeId: string;
     planId: string;
     approvedOn: string;
+    programStartedOn: string;
     patientUserId: string;
   }>(
+    // approvedOn dates the active REVISION (the review clock counts from it);
+    // programStartedOn is the episode's first approval, which is what the
+    // adherence window anchors to — a swap must not wipe the week's numbers.
     `SELECT p.episode_id AS "episodeId", p.id AS "planId",
-            p.approved_at::date::text AS "approvedOn",
+            ${dayOf("p.approved_at")}::text AS "approvedOn",
+            (SELECT min(${dayOf("p2.approved_at")}) FROM plans p2
+             WHERE p2.episode_id = p.episode_id AND p2.approved_at IS NOT NULL)::text
+              AS "programStartedOn",
             ep.patient_user_id AS "patientUserId"
      FROM plans p JOIN episodes ep ON ep.id = p.episode_id
      WHERE p.episode_id = ANY($1::uuid[]) AND p.status = 'active'`,
@@ -119,7 +128,7 @@ export async function reviewSignals(
   );
 
   const { rows: reviews } = await pool.query<{ episodeId: string; on: string }>(
-    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId", created_at::date::text AS "on"
+    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId", ${dayOf("created_at")}::text AS "on"
      FROM plan_reviews WHERE episode_id = ANY($1::uuid[])
      ORDER BY episode_id, created_at DESC`,
     [episodeIds],
@@ -127,7 +136,7 @@ export async function reviewSignals(
   const lastReview = new Map(reviews.map((r) => [r.episodeId, r.on]));
 
   const { rows: requests } = await pool.query<CheckinRequest & { episodeId: string }>(
-    `SELECT episode_id AS "episodeId", kind, note, created_at::date::text AS "on"
+    `SELECT episode_id AS "episodeId", kind, note, ${dayOf("created_at")}::text AS "on"
      FROM checkin_requests WHERE episode_id = ANY($1::uuid[]) AND resolved_at IS NULL`,
     [episodeIds],
   );
@@ -136,7 +145,7 @@ export async function reviewSignals(
   // Completed office visits, dated — counted against each episode's own
   // review clock below (the "every 3 visits" trigger).
   const { rows: visitRows } = await pool.query<{ episodeId: string; on: string }>(
-    `SELECT episode_id AS "episodeId", started_at::date::text AS "on"
+    `SELECT episode_id AS "episodeId", ${dayOf("started_at")}::text AS "on"
      FROM visits WHERE episode_id = ANY($1::uuid[]) AND ended_at IS NOT NULL`,
     [episodeIds],
   );
@@ -157,7 +166,7 @@ export async function reviewSignals(
     on: string;
   }>(
     `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
-            limited_activities AS activities, created_at::date::text AS "on"
+            limited_activities AS activities, ${dayOf("created_at")}::text AS "on"
      FROM intakes
      WHERE episode_id = ANY($1::uuid[]) AND limited_activities IS NOT NULL
      ORDER BY episode_id, created_at DESC`,
@@ -169,7 +178,7 @@ export async function reviewSignals(
     on: string;
   }>(
     `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
-            ratings, created_at::date::text AS "on"
+            ratings, ${dayOf("created_at")}::text AS "on"
      FROM goal_ratings WHERE episode_id = ANY($1::uuid[])
      ORDER BY episode_id, created_at DESC`,
     [episodeIds],
@@ -233,22 +242,45 @@ export async function reviewSignals(
     [plans.map((p) => p.planId)],
   );
 
+  // When each exercise first entered each episode's program — the same
+  // clamp the dashboard applies, so the banner and the panel say one number.
+  const { rows: firstRows } = await pool.query<{
+    episodeId: string;
+    exerciseId: string;
+    firstOn: string;
+  }>(
+    `SELECT p.episode_id AS "episodeId", pi.exercise_id AS "exerciseId",
+            min(${dayOf("p.approved_at")})::text AS "firstOn"
+     FROM plans p JOIN plan_items pi ON pi.plan_id = p.id
+     WHERE p.episode_id = ANY($1::uuid[]) AND p.approved_at IS NOT NULL
+     GROUP BY 1, 2`,
+    [episodeIds],
+  );
+  const firstOn = new Map(firstRows.map((r) => [`${r.episodeId}:${r.exerciseId}`, r.firstOn]));
+
   // Patient-scoped like the dashboard's query: ad-hoc care rows carry pain
-  // scores that belong in the trend, and match no plan item so they cannot
-  // inflate compliance.
+  // scores that belong in the trend, and rows for unprescribed exercises
+  // match no plan item so they cannot inflate compliance.
   const { rows: logs } = await pool.query<StatLog & { patientUserId: string }>(
-    `SELECT al.patient_user_id AS "patientUserId", al.plan_item_id AS "planItemId",
+    `SELECT al.patient_user_id AS "patientUserId", al.exercise_id AS "exerciseId",
             al.log_date::text AS "logDate", al.completed, al.pain
      FROM adherence_logs al
      WHERE al.patient_user_id = ANY($1::uuid[])
-       AND al.log_date > CURRENT_DATE - $2::int`,
+       AND al.log_date > ${APP_DAY} - $2::int`,
     [[...new Set(plans.map((p) => p.patientUserId))], REVIEW_WINDOW_DAYS],
   );
 
   for (const plan of plans) {
-    const windowDays = effectiveWindowDays(REVIEW_WINDOW_DAYS, plan.approvedOn, today);
+    const windowDays = effectiveWindowDays(REVIEW_WINDOW_DAYS, plan.programStartedOn, today);
     const from = windowStart(windowDays, today);
-    const planItems = items.filter((i) => i.planId === plan.planId);
+    const planItems = items
+      .filter((i) => i.planId === plan.planId)
+      .map((i) => {
+        const first = firstOn.get(`${plan.episodeId}:${i.exerciseId}`);
+        return first && first > from
+          ? { ...i, scoredDays: daysBetween(first, today) + 1, scoredFrom: first }
+          : i;
+      });
     const planLogs = logs.filter(
       (l) => l.patientUserId === plan.patientUserId && l.logDate >= from && l.logDate <= today,
     );

@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
+import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const HISTORY_LIMIT = 20;
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const { rows: visits } = await pool.query(
     // startedOn is the day label, resolved by Postgres so it agrees with every
     // other date in the app (see the note in /api/visits).
-    `SELECT v.id, v.started_at AS "startedAt", v.started_at::date::text AS "startedOn",
+    `SELECT v.id, v.started_at AS "startedAt", ${dayOf("v.started_at")}::text AS "startedOn",
             v.ended_at AS "endedAt", v.note, u.display_name AS "ptName"
      FROM visits v
      JOIN episodes ep ON ep.id = v.episode_id

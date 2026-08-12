@@ -7,7 +7,13 @@
 import type { PoolClient } from "pg";
 import type { ReviewContext } from "./signals";
 
-export type ReviewOutcome = "progressed" | "regressed" | "revamped" | "no_change" | "amended";
+export type ReviewOutcome =
+  | "progressed"
+  | "regressed"
+  | "revamped"
+  | "no_change"
+  | "amended"
+  | "adjusted";
 
 export async function recordReview(
   client: PoolClient,

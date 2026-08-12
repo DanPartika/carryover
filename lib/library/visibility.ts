@@ -30,10 +30,10 @@ export async function viewerClinicIds(pool: Pool, userId: string): Promise<strin
   return rows.map((r) => r.clinic_id);
 }
 
-/** SQL predicate over an `exercises e`, given the bind placeholder holding the
- *  viewer's clinic id array. */
-export function visibleToViewerSql(clinicsPlaceholder: string): string {
-  return `(e.clinic_id IS NULL OR e.shared OR e.clinic_id = ANY(${clinicsPlaceholder}::uuid[]))`;
+/** SQL predicate over an exercises row (alias `e` unless told otherwise),
+ *  given the bind placeholder holding the viewer's clinic id array. */
+export function visibleToViewerSql(clinicsPlaceholder: string, alias = "e"): string {
+  return `(${alias}.clinic_id IS NULL OR ${alias}.shared OR ${alias}.clinic_id = ANY(${clinicsPlaceholder}::uuid[]))`;
 }
 
 /** May this user change a library row? Only clinic-authored ones, and only by

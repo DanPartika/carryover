@@ -37,10 +37,11 @@ export async function progressionCandidates(
 ): Promise<ProgressionCandidate[]> {
   const { rows } = await pool.query<ProgressionCandidate>(
     `WITH edges AS (
-       SELECT from_exercise_id AS anchor, to_exercise_id AS target, note, 'up' AS direction
+       SELECT from_exercise_id AS anchor, to_exercise_id AS target, note, clinic_id,
+              'up' AS direction
        FROM exercise_progressions
        UNION ALL
-       SELECT to_exercise_id AS anchor, from_exercise_id AS target, NULL, 'down'
+       SELECT to_exercise_id AS anchor, from_exercise_id AS target, NULL, clinic_id, 'down'
        FROM exercise_progressions
      )
      SELECT pi.id AS "planItemId",
@@ -62,6 +63,9 @@ export async function progressionCandidates(
        -- A clinic's private exercise stays private even when it sits on an
        -- edge someone else's exercise points at.
        AND (te.clinic_id IS NULL OR te.shared OR te.clinic_id = $3)
+       -- Same rule for the edge itself: a chain step one clinic charted is
+       -- that clinic's clinical judgment, not the neighborhood's.
+       AND (ed.clinic_id IS NULL OR ed.clinic_id = $3)
        -- Nothing already in the plan: swapping in a duplicate isn't a step.
        AND NOT EXISTS (
          SELECT 1 FROM plan_items x WHERE x.plan_id = pi.plan_id AND x.exercise_id = te.id

@@ -15,7 +15,7 @@ import { GoalsPanel } from "@/components/Goals";
 import IntakeForm, { type IntakePayload } from "@/components/IntakeForm";
 import IntakeSummary from "@/components/IntakeSummary";
 import NotesPanel from "@/components/NotesPanel";
-import { PlanDoors, ReviewBanner, RowSteps, type Review } from "@/components/ReviewPanel";
+import { AdjustItem, PlanDoors, ReviewBanner, RowSteps, type Review } from "@/components/ReviewPanel";
 import ReviewTimeline from "@/components/ReviewTimeline";
 import VisitMode from "@/components/VisitMode";
 import { dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
@@ -36,7 +36,10 @@ type Item = {
   holdSecs: number | null;
   durationMins: number | null;
   intensity: string | null;
-  frequencyPerWeek: number;
+  /** Nullable so the editor can hold an empty field mid-typing — the old
+   *  `?? 5` snap-back turned a backspaced "7" into "57" on the phone. The
+   *  server clamps null back to its default on save. */
+  frequencyPerWeek: number | null;
   location: "office" | "home" | "both";
   rationale: string | null;
   careTiming: "before" | "after" | null;
@@ -95,6 +98,8 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
 
   // Intake form open/closed — the fields themselves live in IntakeForm.
   const [showIntake, setShowIntake] = useState(false);
+  // Which active-plan item is open for in-place editing (adjust revision).
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
 
   // Draft editor state (mirrors the draft plan's items)
   const [draftItems, setDraftItems] = useState<Item[] | null>(null);
@@ -122,6 +127,13 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     dosageType: DosageType;
     kind?: "exercise" | "modality";
   }) {
+    // Once per plan — logging and compliance key on the exercise, so a
+    // duplicate row would share one log with its twin.
+    if (draftItems?.some((i) => i.exerciseId === hit.id)) {
+      setSearch("");
+      setHits([]);
+      return;
+    }
     const kind = hit.kind ?? "exercise";
     setDraftItems((prev) => [
       ...(prev ?? []),
@@ -341,6 +353,19 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     setDirty(true);
   }
 
+  /** Reorder within the draft — order is what the patient's Today reads. */
+  function moveItem(idx: number, delta: -1 | 1) {
+    setDraftItems((prev) => {
+      if (!prev) return prev;
+      const j = idx + delta;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+    setDirty(true);
+  }
+
   // Mirror the server's clampOrNull bounds so what the editor shows is what
   // gets stored — HTML min/max doesn't constrain typed values.
   function boundedOrNull(v: string, lo: number, hi: number): number | null {
@@ -495,6 +520,22 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                         <option value="both">both</option>
                       </select>
                       <button
+                        onClick={() => moveItem(idx, -1)}
+                        disabled={idx === 0}
+                        className="text-muted hover:text-ink disabled:opacity-25"
+                        title="Move up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveItem(idx, 1)}
+                        disabled={idx === draftItems.length - 1}
+                        className="text-muted hover:text-ink disabled:opacity-25"
+                        title="Move down"
+                      >
+                        ↓
+                      </button>
+                      <button
                         onClick={() => {
                           setDraftItems((prev) => prev!.filter((_, i) => i !== idx));
                           setDirty(true);
@@ -581,10 +622,10 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                       ×/week
                       <input
                         type="number" min={1} max={14}
-                        value={it.frequencyPerWeek}
+                        value={it.frequencyPerWeek ?? ""}
                         onChange={(e) =>
                           updateItem(idx, {
-                            frequencyPerWeek: boundedOrNull(e.target.value, 1, 14) ?? 5,
+                            frequencyPerWeek: boundedOrNull(e.target.value, 1, 14),
                           })
                         }
                         className={numInput}
@@ -812,42 +853,92 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                   ? "one exercise stepped along the chain at a check-in"
                   : activePlan.source === "amendment"
                     ? "one exercise added by hand"
-                    : "built manually"}
+                    : activePlan.source === "adjustment"
+                      ? "one exercise adjusted by hand"
+                      : "built manually"}
             </p>
-            <ul className="mt-2 space-y-1.5">
-              {activePlan.items.map((it) => {
-                const steps = (data.review?.progressions ?? []).filter(
-                  (p) => p.planItemId === it.id,
-                );
-                return (
-                  <li key={it.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium">
-                        {it.name}
-                        {it.kind === "modality" && (
-                          <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
-                            care
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {dosageText(it)} · {it.frequencyPerWeek}/wk · {it.location}
-                        {it.careTiming ? ` · ${it.careTiming} exercises` : ""}
-                      </span>
-                    </div>
-                    {typeof it.id === "string" && steps.length > 0 && (
-                      <RowSteps
-                        item={it as typeof it & { id: string }}
-                        progressions={steps}
-                        activePlanId={activePlan.id}
-                        patientName={name}
-                        onChanged={reload}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            {/* Grouped the way the patient lives it — the home program, then
+                what happens in the room. The In-office section further down
+                is the RECORD of visits; this is the prescription (Dan: "it
+                feels like I'm seeing the same thing twice"). */}
+            {(
+              [
+                ["At home", activePlan.items.filter((i) => i.location !== "office")],
+                ["In the office", activePlan.items.filter((i) => i.location === "office")],
+              ] as const
+            ).map(([groupLabel, groupItems]) =>
+              groupItems.length === 0 ? null : (
+                <div key={groupLabel} className="mt-2">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                    {groupLabel}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {groupItems.map((it) => {
+                      const steps = (data.review?.progressions ?? []).filter(
+                        (p) => p.planItemId === it.id,
+                      );
+                      const server = typeof it.id === "string";
+                      const adjusting = server && adjustingId === it.id;
+                      return (
+                        <li key={it.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium">
+                              {it.name}
+                              {it.kind === "modality" && (
+                                <span className="ml-2 rounded-full bg-raise px-2 py-0.5 text-xs text-muted">
+                                  care
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-xs text-muted">
+                              {dosageText(it)} · {it.frequencyPerWeek ?? 5}/wk · {it.location}
+                              {it.careTiming ? ` · ${it.careTiming} exercises` : ""}
+                              {server && (
+                                <button
+                                  onClick={() =>
+                                    setAdjustingId(adjusting ? null : (it.id as string))
+                                  }
+                                  className="ml-2 underline hover:text-ink"
+                                >
+                                  {adjusting ? "close" : "edit"}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                          {adjusting && (
+                            <AdjustItem
+                              item={{
+                                ...(it as typeof it & { id: string }),
+                                frequencyPerWeek: it.frequencyPerWeek ?? 5,
+                              }}
+                              activePlanId={activePlan.id}
+                              patientName={name}
+                              onChanged={reload}
+                              onClose={() => setAdjustingId(null)}
+                            />
+                          )}
+                          {server && !adjusting && steps.length > 0 && (
+                            <RowSteps
+                              // Server rows always carry a frequency; the ?? 5
+                              // is for the type, which allows null only for
+                              // editor drafts.
+                              item={{
+                                ...(it as typeof it & { id: string }),
+                                frequencyPerWeek: it.frequencyPerWeek ?? 5,
+                              }}
+                              progressions={steps}
+                              activePlanId={activePlan.id}
+                              patientName={name}
+                              onChanged={reload}
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ),
+            )}
             <AmendPlan
               activePlanId={activePlan.id}
               patientName={name}
