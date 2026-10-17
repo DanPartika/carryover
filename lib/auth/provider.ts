@@ -27,12 +27,26 @@ export interface AuthProvider {
   readonly kind: "none" | "lithe";
   readonly enabled: boolean;
   login(): Promise<void>;
-  completeLogin(): Promise<void>;
+  /** Adopt an existing Lithe SSO session with no interaction (OIDC prompt=none).
+   *  Resolves true when the redirect is under way — the page is about to unload,
+   *  so callers should render nothing rather than a sign-in screen. False means
+   *  we already asked in this tab and Zitadel said there is nobody to resume. */
+  resumeSession(): Promise<boolean>;
+  completeLogin(): Promise<LoginResult>;
   logout(): Promise<void>;
   session(): Promise<AuthSession | null>;
   /** Lithe /v1/me — JIT-provisions the user in Lithe and returns groups. */
   me(): Promise<LitheMe | null>;
 }
+
+/** How a returning OIDC redirect turned out. A prompt=none bounce that finds no
+ *  SSO session comes back as an OAuth error, but that isn't a failure — it just
+ *  means this user really does have to sign in. */
+export type LoginResult = {
+  outcome: "signed-in" | "no-session";
+  /** Base-relative path the user was heading to when the redirect started. */
+  returnTo: string;
+};
 
 export type LitheEnv = {
   issuer?: string;
@@ -57,7 +71,8 @@ const disabled: AuthProvider = {
   kind: "none",
   enabled: false,
   login: async () => {},
-  completeLogin: async () => {},
+  resumeSession: async () => false,
+  completeLogin: async () => ({ outcome: "no-session", returnTo: "/" }),
   logout: async () => {},
   session: async () => null,
   me: async () => null,

@@ -33,15 +33,23 @@ export function AuthContextProvider({ children }: { children: React.ReactNode })
       try {
         const s = await auth.session();
         if (!alive) return;
+        // No token of our own, but a Lithe login elsewhere (Studio, another app)
+        // leaves a Zitadel SSO session this app can adopt without a click. While
+        // that redirect is under way the page is about to unload, so stay in the
+        // loading state — RequireAuth then renders nothing instead of flashing a
+        // sign-in screen the user never needed to see.
+        if (!s && (await auth.resumeSession())) return;
+        if (!alive) return;
         setSession(s);
         if (s) {
           // JIT-provisions this user in Lithe and returns their groups.
           const m = await auth.me();
           if (alive) setMe(m);
         }
-      } finally {
-        if (alive) setLoading(false);
+      } catch {
+        // Any auth failure means signed out; the sign-in screen is the way back.
       }
+      if (alive) setLoading(false);
     })();
     return () => {
       alive = false;

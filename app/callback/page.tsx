@@ -27,10 +27,13 @@ export default function CallbackPage() {
     }
     auth
       .completeLogin()
-      .then(() => {
+      .then(({ returnTo }) => {
+        // Both outcomes land here: a real sign-in, and a prompt=none bounce that
+        // found no SSO session — that one just arrives back signed out, and the
+        // page it returns to shows the sign-in screen.
         // Full navigation (not router.replace) so AuthContext re-reads the session.
         // window.location doesn't know the base path, so prefix it explicitly.
-        window.location.replace(withBase("/"));
+        window.location.replace(withBase(returnTo));
       })
       .catch((err) => setError((err as Error).message));
   }, [router]);
