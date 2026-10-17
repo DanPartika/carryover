@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse } from "@/lib/episodes/guard";
 import {
   INTAKE_INSERT_SQL,
   intakeInsertValues,
@@ -32,6 +33,15 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Starting an episode is an explicit act. A form that was editing an episode
+  // says WHICH one (`episodeId`); one opened from "no open episode" says so
+  // (`startNew`). Without that, a stale tab saving after the episode was closed
+  // elsewhere would silently mint a brand-new episode carrying the old
+  // condition, and the PT would believe they had amended the closed one.
+  const assertedEpisodeId = typeof body?.episodeId === "string" ? body.episodeId : null;
+  if (!assertedEpisodeId && body?.startNew !== true) {
+    return NextResponse.json({ error: "episodeId or startNew required" }, { status: 400 });
+  }
   if (!(await canTreat(pool, user.id, patientUserId, clinicId))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -41,22 +51,53 @@ export async function POST(req: NextRequest) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    let {
-      rows: [episode],
-    } = await client.query<{ id: string }>(
-      `SELECT id FROM episodes
-       WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
-       ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
-      [patientUserId, clinicId],
-    );
-    if (!episode) {
+    let episode: { id: string } | undefined;
+    if (assertedEpisodeId) {
+      // Amending a specific episode: it must still be the open one.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assertedEpisodeId)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "bad episodeId" }, { status: 400 });
+      }
       ({
         rows: [episode],
       } = await client.query<{ id: string }>(
-        `INSERT INTO episodes (clinic_id, patient_user_id, condition)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [clinicId, patientUserId, condition],
+        `SELECT id FROM episodes
+         WHERE id = $1 AND patient_user_id = $2 AND clinic_id = $3 AND closed_at IS NULL
+         FOR UPDATE`,
+        [assertedEpisodeId, patientUserId, clinicId],
       ));
+      if (!episode) {
+        await client.query("ROLLBACK");
+        return closedEpisodeResponse();
+      }
+    } else {
+      // Find the open episode or open one. Two requests can both see "none"
+      // (a PT's intake and the patient's own pre-fill); the unique index on open
+      // episodes lets exactly one INSERT win and the loser joins the winner's.
+      for (let attempt = 0; attempt < 3 && !episode; attempt++) {
+        ({
+          rows: [episode],
+        } = await client.query<{ id: string }>(
+          `SELECT id FROM episodes
+           WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
+           ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
+          [patientUserId, clinicId],
+        ));
+        if (episode) break;
+        ({
+          rows: [episode],
+        } = await client.query<{ id: string }>(
+          `INSERT INTO episodes (clinic_id, patient_user_id, condition)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (clinic_id, patient_user_id) WHERE closed_at IS NULL DO NOTHING
+           RETURNING id`,
+          [clinicId, patientUserId, condition],
+        ));
+      }
+      if (!episode) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "busy — try again" }, { status: 409 });
+      }
     }
 
     const {

@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
 import { dosageText } from "@/lib/dosage";
+import { closedEpisodeResponse, lockOpenEpisode } from "@/lib/episodes/guard";
 import { recordReview, resolveOpenRequest } from "@/lib/review/record";
 import { reviewContext, reviewSignals } from "@/lib/review/signals";
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!plan) return NextResponse.json({ error: "not found" }, { status: 404 });
   const episode = await episodeForActor(pool, plan.episode_id, user.id);
   if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
   if (plan.status !== "active") {
     return NextResponse.json({ error: "only the active plan can be adjusted" }, { status: 409 });
   }
@@ -153,6 +155,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (!(await lockOpenEpisode(client, plan.episode_id))) {
+      await client.query("ROLLBACK");
+      return closedEpisodeResponse();
+    }
     const {
       rows: [nextPlan],
     } = await client.query<{ id: string }>(

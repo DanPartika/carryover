@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse, lockOpenEpisode } from "@/lib/episodes/guard";
 import { recordReview, resolveOpenRequest } from "@/lib/review/record";
 import { reviewContext, reviewSignals } from "@/lib/review/signals";
 
@@ -26,12 +27,17 @@ export async function POST(req: NextRequest) {
   }
   const episode = await episodeForActor(pool, body.episodeId, user.id);
   if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
 
   const context = reviewContext((await reviewSignals(pool, [episode.id])).get(episode.id));
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (!(await lockOpenEpisode(client, episode.id))) {
+      await client.query("ROLLBACK");
+      return closedEpisodeResponse();
+    }
     await recordReview(client, {
       episodeId: episode.id,
       reviewedBy: user.id,

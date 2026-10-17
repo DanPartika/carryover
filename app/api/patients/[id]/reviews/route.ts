@@ -24,14 +24,27 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // A specific episode (the history view reads closed ones) — pinned to this
+  // patient AND clinic, so an id from elsewhere finds nothing rather than
+  // someone else's record. Without one: the open episode, as always.
+  const episodeId = req.nextUrl.searchParams.get("episodeId");
+  if (episodeId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(episodeId)) {
+    return NextResponse.json({ error: "bad episodeId" }, { status: 400 });
+  }
   const {
     rows: [episode],
-  } = await pool.query<{ id: string }>(
-    `SELECT id FROM episodes
-     WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
-     ORDER BY opened_at DESC LIMIT 1`,
-    [patientId, clinicId],
-  );
+  } = episodeId
+    ? await pool.query<{ id: string }>(
+        `SELECT id FROM episodes
+         WHERE id = $3::uuid AND patient_user_id = $1 AND clinic_id = $2`,
+        [patientId, clinicId, episodeId],
+      )
+    : await pool.query<{ id: string }>(
+        `SELECT id FROM episodes
+         WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
+         ORDER BY opened_at DESC LIMIT 1`,
+        [patientId, clinicId],
+      );
   if (!episode) return NextResponse.json({ reviews: [] });
 
   const { rows: reviews } = await pool.query(

@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse, isEpisodeClosedError } from "@/lib/episodes/guard";
 
 const HISTORY_LIMIT = 20;
 
@@ -22,15 +23,24 @@ export async function POST(req: NextRequest) {
   if (!body?.episodeId) return NextResponse.json({ error: "episodeId required" }, { status: 400 });
   const episode = await episodeForActor(pool, body.episodeId, user.id);
   if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
 
   // The partial unique index (one open visit per episode) is the real guard;
   // DO NOTHING + a follow-up read turns a concurrent double-tap into the same
-  // answer for both callers instead of a 500 for the loser.
-  const { rows: created } = await pool.query<{ id: string }>(
-    `INSERT INTO visits (episode_id, pt_user_id) VALUES ($1, $2)
-     ON CONFLICT DO NOTHING RETURNING id`,
-    [episode.id, user.id],
-  );
+  // answer for both callers instead of a 500 for the loser. A close racing this
+  // INSERT is stopped by the 0016 trigger (check_violation), not by anything
+  // here — the pre-check above can't see an uncommitted close.
+  let created: { id: string }[];
+  try {
+    ({ rows: created } = await pool.query<{ id: string }>(
+      `INSERT INTO visits (episode_id, pt_user_id) VALUES ($1, $2)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [episode.id, user.id],
+    ));
+  } catch (err) {
+    if (isEpisodeClosedError(err)) return closedEpisodeResponse();
+    throw err;
+  }
   if (created.length > 0) {
     return NextResponse.json({ visitId: created[0].id, resumed: false }, { status: 201 });
   }

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
+import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { INTAKE_SELECT_COLS } from "@/lib/intake/fields";
 import { progressionCandidates } from "@/lib/review/progressions";
@@ -44,6 +45,19 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     `SELECT id, condition, opened_at AS "openedAt" FROM episodes
      WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
      ORDER BY opened_at DESC LIMIT 1`,
+    [patientId, clinicId],
+  );
+
+  // How many finished episodes this clinic has with the patient, and when the
+  // last one closed — enough for the page to say "starting a new episode"
+  // instead of "no intake yet". The history itself loads on its own.
+  const {
+    rows: [past],
+  } = await pool.query<{ count: number; lastClosedOn: string | null }>(
+    `SELECT count(*)::int AS count,
+            max(COALESCE(ended_on, ${dayOf("closed_at")}))::text AS "lastClosedOn"
+     FROM episodes
+     WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NOT NULL`,
     [patientId, clinicId],
   );
 
@@ -101,6 +115,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     patient,
     equipment: equipment.map((e) => e.name),
     episode: episode ?? null,
+    pastEpisodes: past,
     latestIntake,
     plans,
     review,

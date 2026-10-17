@@ -23,9 +23,13 @@ type Note = {
 export default function NotesPanel({
   episodeId,
   patientName,
+  readOnly = false,
 }: {
   episodeId: string;
   patientName: string;
+  /** A closed episode's notes: readable, not writable. Inside a history card,
+   *  so no card of its own either. */
+  readOnly?: boolean;
 }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [draft, setDraft] = useState("");
@@ -107,10 +111,9 @@ export default function NotesPanel({
 
   const firstName = patientName.split(" ")[0];
 
-  return (
-    <section className="rounded-xl border border-edge bg-card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Notes</h2>
-
+  const content = (
+    <>
+      {!readOnly && (
       <div className="mt-3">
         <textarea
           value={draft}
@@ -137,12 +140,15 @@ export default function NotesPanel({
           </label>
         </div>
       </div>
+      )}
 
       {error && <p className="mt-2 text-sm text-flag">{error}</p>}
 
       {notes && notes.length === 0 && (
         <p className="mt-3 text-sm text-muted">
-          No notes yet. Anything {firstName} writes in their journal lands here too.
+          {readOnly
+            ? "No notes were written in this episode."
+            : `No notes yet. Anything ${firstName} writes in their journal lands here too.`}
         </p>
       )}
 
@@ -168,7 +174,7 @@ export default function NotesPanel({
                   {n.shared ? `shared with ${firstName}` : "private"}
                 </span>
               )}
-              {n.mine && (
+              {n.mine && !readOnly && (
                 <span className="ml-auto flex gap-2">
                   {n.authorRole === "pt" && (
                     <button
@@ -188,6 +194,16 @@ export default function NotesPanel({
           </li>
         ))}
       </ul>
+    </>
+  );
+
+  // A plain conditional wrapper, not a component defined in render — that
+  // would remount the whole subtree (textarea focus included) on every render.
+  if (readOnly) return <div>{content}</div>;
+  return (
+    <section className="rounded-xl border border-edge bg-card p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Notes</h2>
+      {content}
     </section>
   );
 }

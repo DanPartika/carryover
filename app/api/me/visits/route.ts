@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
      FROM visits v
      JOIN episodes ep ON ep.id = v.episode_id
      LEFT JOIN users u ON u.id = v.pt_user_id
-     WHERE ep.patient_user_id = $1 AND v.ended_at IS NOT NULL
+     -- Open episodes only: the "In office" tab is this course of care. Earlier
+     -- episodes' visits are counted in the history card, not mixed in here.
+     WHERE ep.patient_user_id = $1 AND v.ended_at IS NOT NULL AND ep.closed_at IS NULL
      ORDER BY v.started_at DESC LIMIT ${HISTORY_LIMIT}`,
     [user.id],
   );

@@ -11,13 +11,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { loadAdherence } from "@/lib/adherence/load";
-import { draftPlan, planModel, type IntakeForPrompt, type ProgressContext } from "@/lib/ai/plan";
+import { scrubNames } from "@/lib/ai/closing";
+import {
+  draftPlan,
+  planModel,
+  type IntakeForPrompt,
+  type PriorCare,
+  type ProgressContext,
+} from "@/lib/ai/plan";
 import { factSheet } from "@/lib/ai/summary";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { dosageLine } from "@/lib/dosage";
+import { closedEpisodeResponse, lockOpenEpisode } from "@/lib/episodes/guard";
 import { requestLabel, type CheckinRequest } from "@/lib/review/due";
 import { progressionCandidates } from "@/lib/review/progressions";
 import { REVIEW_WINDOW_DAYS } from "@/lib/review/signals";
@@ -54,6 +62,7 @@ export async function POST(req: NextRequest) {
   }
   const episode = await episodeForActor(pool, body.episodeId, user.id);
   if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
 
   const source = body.source === "manual" ? "manual" : "ai-draft";
 
@@ -202,6 +211,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "nothing to draft from" }, { status: 400 });
     }
 
+    // Earlier CLOSED episodes with THIS clinic (never another's), reduced to the
+    // PT's own "watch for" line. A first draft only: a revamp has weeks of
+    // evidence about now, and history there would just add a wrong anchor. Not
+    // the closing summary and not any plan — see PriorCare in lib/ai/plan.ts for
+    // why. Patient name scrubbed from the PT's free text, as everywhere else.
+    let history: PriorCare[] | undefined;
+    if (!revamp) {
+      const { rows: prior } = await pool.query<{
+        condition: string;
+        closedYear: number;
+        watchFor: string;
+        displayName: string | null;
+        email: string | null;
+      }>(
+        `SELECT e.condition,
+                EXTRACT(YEAR FROM COALESCE(e.ended_on, ${dayOf("e.closed_at")}))::int AS "closedYear",
+                e.closing_watch_for AS "watchFor", u.display_name AS "displayName", u.email
+         FROM episodes e JOIN users u ON u.id = e.patient_user_id
+         WHERE e.patient_user_id = $1 AND e.clinic_id = $2 AND e.id <> $3
+           AND e.closed_at IS NOT NULL AND btrim(COALESCE(e.closing_watch_for, '')) <> ''
+         ORDER BY e.closed_at DESC LIMIT 3`,
+        [episode.patientUserId, episode.clinicId, episode.id],
+      );
+      if (prior.length > 0) {
+        const names = [
+          ...(prior[0].displayName ?? "").split(/\s+/),
+          (prior[0].email ?? "").split("@")[0],
+        ].filter(Boolean);
+        history = prior.map((h) => ({
+          condition: scrubNames(h.condition, names),
+          closedYear: h.closedYear,
+          watchFor: scrubNames(h.watchFor, names),
+        }));
+      }
+    }
+
     const started = Date.now();
     try {
       const result = await draftPlan({
@@ -211,6 +256,7 @@ export async function POST(req: NextRequest) {
         clinicId: episode.clinicId,
         jwt: user.token,
         progress,
+        history,
       });
       items = result.items;
       model = result.model;
@@ -254,6 +300,12 @@ export async function POST(req: NextRequest) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // The AI call above can take seconds — long enough for the episode to
+    // have been closed from another tab.
+    if (!(await lockOpenEpisode(client, episode.id))) {
+      await client.query("ROLLBACK");
+      return closedEpisodeResponse();
+    }
     const {
       rows: [plan],
     } = await client.query<{ id: string }>(

@@ -149,10 +149,13 @@ export default function SessionLog({
   days,
   focusExerciseId,
   onClearFocus,
+  episodeId,
 }: {
   patientId: string;
   clinicId: string;
   days: number;
+  /** A past episode: the log covers that episode's own days, `days` ignored. */
+  episodeId?: string;
   /** Set when the PT clicked a bar above: show only that exercise, across
    *  every plan revision it has appeared in. */
   focusExerciseId: string | null;
@@ -166,7 +169,7 @@ export default function SessionLog({
   const load = useCallback(async () => {
     try {
       const res = await apiFetch(
-        `/api/patients/${patientId}/sessions?clinicId=${clinicId}&days=${days}`,
+        `/api/patients/${patientId}/sessions?clinicId=${clinicId}&days=${days}${episodeId ? `&episodeId=${episodeId}` : ""}`,
       );
       if (!res.ok) {
         setError(`session log failed (${res.status})`);
@@ -177,7 +180,7 @@ export default function SessionLog({
     } catch {
       setError("network error loading the session log");
     }
-  }, [patientId, clinicId, days]);
+  }, [patientId, clinicId, days, episodeId]);
 
   useEffect(() => {
     // setState lives inside load() past an await, not in the effect body.

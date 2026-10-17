@@ -62,10 +62,15 @@ export async function loadAdherence(
   pool: Pool,
   episodeId: string,
   requestedDays = DEFAULT_WINDOW_DAYS,
+  /** Measure as of this clinic day instead of today. Closing an episode whose
+   *  care ended weeks ago must not keep accruing expected sessions for the
+   *  weeks the patient was already gone. */
+  asOf?: string,
 ): Promise<AdherenceView> {
   const {
-    rows: [{ today }],
+    rows: [{ today: dbToday }],
   } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
+  const today = asOf && asOf < dbToday ? asOf : dbToday;
 
   const {
     rows: [ep],

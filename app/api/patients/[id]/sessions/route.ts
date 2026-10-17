@@ -13,10 +13,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_WINDOW_DAYS } from "@/lib/adherence/load";
-import { windowStart } from "@/lib/adherence/stats";
+import { daysBetween, windowStart } from "@/lib/adherence/stats";
 import { requireUser } from "@/lib/auth/identity";
 import { canTreat } from "@/lib/auth/treatment";
-import { APP_DAY } from "@/lib/dates";
+import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 
 const WINDOW_CHOICES = [7, 14, 28, 90];
@@ -37,12 +37,50 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   const asked = Number(req.nextUrl.searchParams.get("days"));
-  const days = WINDOW_CHOICES.includes(asked) ? asked : DEFAULT_WINDOW_DAYS;
+  let days = WINDOW_CHOICES.includes(asked) ? asked : DEFAULT_WINDOW_DAYS;
 
   const {
     rows: [{ today }],
   } = await pool.query<{ today: string }>(`SELECT ${APP_DAY}::text AS today`);
-  const from = windowStart(days, today);
+  let from = windowStart(days, today);
+  let to = today;
+
+  // The CURRENT episode's sessions start when it did: a patient who returns
+  // after an earlier episode must not see last round's logs interleaved with
+  // this round's prescriptions.
+  const {
+    rows: [current],
+  } = await pool.query<{ openedOn: string }>(
+    `SELECT ${dayOf("opened_at")}::text AS "openedOn" FROM episodes
+     WHERE patient_user_id = $1 AND clinic_id = $2 AND closed_at IS NULL
+     ORDER BY opened_at DESC LIMIT 1`,
+    [patientId, clinicId],
+  );
+  if (current && current.openedOn > from) from = current.openedOn;
+
+  // A past episode: the window is that episode's own days, opened to closed,
+  // whatever "days" says. Logs are patient-scoped by date, so the episode's
+  // span is what separates its sessions from the next round's. Pinned to this
+  // patient AND clinic so an id from elsewhere finds nothing.
+  const episodeId = req.nextUrl.searchParams.get("episodeId");
+  if (episodeId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(episodeId)) {
+      return NextResponse.json({ error: "bad episodeId" }, { status: 400 });
+    }
+    const {
+      rows: [span],
+    } = await pool.query<{ openedOn: string; closedOn: string | null }>(
+      `SELECT ${dayOf("opened_at")}::text AS "openedOn",
+              COALESCE(ended_on, ${dayOf("closed_at")})::text AS "closedOn"
+       FROM episodes
+       WHERE id = $3::uuid AND patient_user_id = $1 AND clinic_id = $2`,
+      [patientId, clinicId, episodeId],
+    );
+    if (!span) return NextResponse.json({ error: "not found" }, { status: 404 });
+    from = span.openedOn;
+    to = span.closedOn ?? today;
+    days = daysBetween(from, to) + 1;
+  }
 
   const { rows: sessions } = await pool.query(
     `SELECT al.id, al.log_date::text AS date, al.exercise_id AS "exerciseId",
@@ -62,9 +100,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
      JOIN exercises e ON e.id = al.exercise_id
      LEFT JOIN plan_items pi ON pi.id = al.plan_item_id
      WHERE al.patient_user_id = $1 AND al.log_date BETWEEN $2::date AND $3::date
+       -- Logs are patient-scoped, so a patient seen at two clinics has one pile.
+       -- This clinic reads only exercises it may see: another clinic's private
+       -- exercise names and instructions are not its business.
+       AND (e.clinic_id IS NULL OR e.shared OR e.clinic_id = $4::uuid)
      ORDER BY al.log_date DESC, e.name
      LIMIT ${MAX_ROWS + 1}`,
-    [patientId, from, today],
+    [patientId, from, to, clinicId],
   );
 
   const truncated = sessions.length > MAX_ROWS;

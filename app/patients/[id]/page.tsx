@@ -6,15 +6,17 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, EPISODE_CLOSED_EVENT } from "@/lib/api/client";
 import AdherencePanel from "@/components/AdherencePanel";
 import AmendPlan from "@/components/AmendPlan";
 import { useAuth } from "@/components/AuthContext";
+import CloseEpisode from "@/components/CloseEpisode";
 import ExerciseComposer from "@/components/ExerciseComposer";
 import { GoalsPanel } from "@/components/Goals";
 import IntakeForm, { type IntakePayload } from "@/components/IntakeForm";
 import IntakeSummary from "@/components/IntakeSummary";
 import NotesPanel from "@/components/NotesPanel";
+import PastEpisodes from "@/components/PastEpisodes";
 import { AdjustItem, PlanDoors, ReviewBanner, RowSteps, type Review } from "@/components/ReviewPanel";
 import ReviewTimeline from "@/components/ReviewTimeline";
 import VisitMode from "@/components/VisitMode";
@@ -68,6 +70,8 @@ type Overview = {
   };
   equipment: string[];
   episode: { id: string; condition: string } | null;
+  /** Finished episodes with this clinic — the history itself loads on its own. */
+  pastEpisodes: { count: number; lastClosedOn: string | null };
   latestIntake: Intake | null;
   plans: Plan[];
   review: Review | null;
@@ -95,6 +99,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
   // Bumped on every reload so the check-in history refetches after any
   // decision (swap, revamp approval, no-change) without its own plumbing.
   const [timelineKey, setTimelineKey] = useState(0);
+  // A request was refused because this page's episode has since been closed
+  // (another tab, another PT). The page reloads itself and says why.
+  const [stale, setStale] = useState(false);
 
   // Intake form open/closed — the fields themselves live in IntakeForm.
   const [showIntake, setShowIntake] = useState(false);
@@ -185,6 +192,15 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
     if (authReady && clinicId) void reload();
   }, [authReady, clinicId, reload]);
 
+  useEffect(() => {
+    const onClosed = () => {
+      setStale(true);
+      void reload();
+    };
+    window.addEventListener(EPISODE_CLOSED_EVENT, onClosed);
+    return () => window.removeEventListener(EPISODE_CLOSED_EVENT, onClosed);
+  }, [reload]);
+
   // Exercise search for the editor's add row. A set facet searches with an
   // empty q — "show me knee work under level 2" is a browse, not a lookup.
   // All setState happens inside the debounce callback (async), never in the
@@ -227,7 +243,15 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       const res = await apiFetch("/api/intakes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinicId, patientUserId: patientId, ...payload }),
+        // Which episode this form is amending — or that it is deliberately
+        // starting one. A stale tab saving after the episode was closed elsewhere
+        // must fail loudly, not mint a new episode with the old condition.
+        body: JSON.stringify({
+          clinicId,
+          patientUserId: patientId,
+          ...payload,
+          ...(data?.episode ? { episodeId: data.episode.id } : { startNew: true }),
+        }),
       });
       if (!res.ok) {
         setError(`intake failed (${res.status})`);
@@ -392,19 +416,58 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{name}</h1>
         <p className="text-sm text-muted">
-          {data.episode ? data.episode.condition : "No open episode"} · home equipment:{" "}
+          {data.episode
+            ? data.episode.condition
+            : data.pastEpisodes.count > 0
+              ? `No open episode — last one ended ${new Date(`${data.pastEpisodes.lastClosedOn}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+              : "No open episode"}{" "}
+          · home equipment:{" "}
           {data.equipment.length ? data.equipment.join(", ") : "none recorded"}
         </p>
       </div>
 
+      {stale && (
+        <p className="rounded-lg border border-edge bg-raise/60 px-3 py-2 text-sm" role="status">
+          {name}&apos;s episode was closed while this page was open — it&apos;s been refreshed
+          to show where things stand now.
+        </p>
+      )}
+
       {error && <p className="text-sm text-flag">{error}</p>}
+
+      {/* Findable, not clickable by accident: a quiet card right under the
+          header (it was buried below Notes), and the flow itself ends on a
+          preview of exactly what the patient will read. */}
+      {data.episode && (
+        <CloseEpisode
+          key={data.episode.id}
+          episodeId={data.episode.id}
+          patientName={name}
+          onClosed={() => void reload()}
+        />
+      )}
+
+      {/* No open episode: the history is what this page is FOR right now — what
+          happened last time, and the intake below is the start of the next. */}
+      {!data.episode && (
+        <PastEpisodes
+          patientId={patientId}
+          clinicId={clinicId}
+          patientName={name}
+          refreshKey={timelineKey}
+          openNewest
+          onReopened={() => void reload()}
+        />
+      )}
 
       {/* Intake. A patient-submitted one renders with a review banner; the
           PT's "Review intake" pre-fills the form from it and saving mints the
           PT-authored row that supersedes it (append-only, as ever). */}
       <section className="rounded-xl border border-edge bg-card p-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Intake</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            {!data.episode && data.pastEpisodes.count > 0 ? "New episode — intake" : "Intake"}
+          </h2>
           {!showIntake && (
             <button
               onClick={() => setShowIntake(true)}
@@ -414,7 +477,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
                 ? data.latestIntake.patientSubmitted
                   ? "Review intake"
                   : "New intake"
-                : "Start intake"}
+                : !data.episode && data.pastEpisodes.count > 0
+                  ? "Start a new episode"
+                  : "Start intake"}
             </button>
           )}
         </div>
@@ -428,8 +493,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
         )}
         {!showIntake && !data.latestIntake && (
           <p className="mt-2 text-sm text-muted">
-            No intake yet — it powers the AI draft and the library filtering. {name} can
-            pre-fill it from their own Today page before the first visit.
+            {!data.episode && data.pastEpisodes.count > 0
+              ? `Saving an intake starts a new episode — a fresh problem with its own plan, goals and history. The past ones are above for reference. ${name} can also pre-fill this from their own Today page.`
+              : `No intake yet — it powers the AI draft and the library filtering. ${name} can pre-fill it from their own Today page before the first visit.`}
           </p>
         )}
 
@@ -1005,6 +1071,18 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
 
       {/* Notes, both sides (step 7). */}
       {data.episode && <NotesPanel episodeId={data.episode.id} patientName={name} />}
+
+      {/* Earlier episodes, folded — reference while this one runs. */}
+      {data.episode && (
+        <PastEpisodes
+          patientId={patientId}
+          clinicId={clinicId}
+          patientName={name}
+          refreshKey={timelineKey}
+          openNewest={false}
+          onReopened={() => void reload()}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse, isEpisodeClosedError } from "@/lib/episodes/guard";
 
 const MAX_BODY = 4000;
 const LIMIT = 100;
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
 
   const episode = await episodeForActor(pool, body.episodeId, user.id);
   if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
 
   // No "you can't write about yourself" check here on purpose. episodeForActor
   // already requires an active assignment or clinic-admin role, which a plain
@@ -74,15 +76,22 @@ export async function POST(req: NextRequest) {
     visitId = body.visitId;
   }
 
-  const {
-    rows: [note],
-  } = await pool.query(
-    `INSERT INTO notes (episode_id, author_user_id, author_role, body, shared, visit_id)
-     VALUES ($1, $2, 'pt', $3, $4, $5)
-     RETURNING id, body, shared, author_role AS "authorRole",
-               author_user_id AS "authorUserId", visit_id AS "visitId",
-               created_at AS "createdAt", true AS "mine"`,
-    [episode.id, user.id, text, body.shared === true, visitId],
-  );
+  let note;
+  try {
+    ({
+      rows: [note],
+    } = await pool.query(
+      `INSERT INTO notes (episode_id, author_user_id, author_role, body, shared, visit_id)
+       VALUES ($1, $2, 'pt', $3, $4, $5)
+       RETURNING id, body, shared, author_role AS "authorRole",
+                 author_user_id AS "authorUserId", visit_id AS "visitId",
+                 created_at AS "createdAt", true AS "mine"`,
+      [episode.id, user.id, text, body.shared === true, visitId],
+    ));
+  } catch (err) {
+    // A close that landed between the check above and this insert.
+    if (isEpisodeClosedError(err)) return closedEpisodeResponse();
+    throw err;
+  }
   return NextResponse.json({ note }, { status: 201 });
 }

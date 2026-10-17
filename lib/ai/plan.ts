@@ -115,6 +115,14 @@ export type ProgressContext = {
   }[];
 };
 
+/** One earlier, CLOSED episode with this clinic, reduced to the PT's own
+ *  "watch for" line. Deliberately not the closing summary: a summary is a story
+ *  about how that round went — "by week 6 you were lunging" — and a story is
+ *  exactly what must not set the pace of a different problem. Condition and the
+ *  YEAR it closed (never dates, never how long it ran) give the model enough to
+ *  know the note is old and about something else. */
+export type PriorCare = { condition: string; closedYear: number; watchFor: string };
+
 // Household items every home is assumed to have; everything else must be in
 // the patient's equipment inventory to count as home-available. Exported so
 // the progression swap applies the same test — a successor that needs a band
@@ -422,6 +430,23 @@ const PLAN_TOOL = {
   },
 };
 
+/** Same tool, with pt_note told it is where prior care is allowed to surface.
+ *  Only used when history is supplied — the default tool text is unchanged. */
+const PLAN_TOOL_WITH_HISTORY = {
+  ...PLAN_TOOL,
+  input_schema: {
+    ...PLAN_TOOL.input_schema,
+    properties: {
+      ...PLAN_TOOL.input_schema.properties,
+      pt_note: {
+        type: "string",
+        description:
+          "OPTIONAL, one or two sentences, for the PT's eyes only (never shown to the patient): screening answers worth eyeballing before loading, medication interactions with exercise, anything the PT should verify in the room — and, if PRIOR CARE changed a choice you made, say so here (and nowhere else). Omit when there's nothing worth flagging.",
+      },
+    },
+  },
+};
+
 const SYSTEM_PROMPT = `You draft exercise-plan PROPOSALS for a licensed physical therapist to review, edit, and approve. You never prescribe: the PT is the decision-maker and nothing you produce reaches a patient without their sign-off.
 
 Rules:
@@ -453,6 +478,37 @@ Rules:
 - If anything in the record should be verified in the room before progressing (screening answers, a pain trend that contradicts the request), say so in pt_note (PT-only). You point, the PT decides.
 - Each rationale is ONE plain-English sentence a patient can understand.
 - Do not diagnose, and do not comment on prognosis or on whether the patient is doing well. Propose the plan; the PT reads the evidence themselves.`;
+
+/** Appended to the FIRST-draft system prompt only when prior care is listed.
+ *  Asymmetric on purpose: history may make a draft more careful and may never
+ *  make it more ambitious. */
+export const HISTORY_RULES = `
+- PRIOR CARE is listed from the PT's own notes on earlier, DIFFERENT episodes. It may only make you MORE careful: avoid or soften an item a note says aggravated the problem, and respect a precaution or an equipment limit it records. It must never raise a starting level, dose, frequency or pace, never be the reason you pick an item ("it worked before"), and never be copied from an earlier plan. A first draft starts where the INTAKE says the patient is today — people do not recover the same way twice.
+- If prior care changed a choice, say so in pt_note only. Never mention earlier care in any rationale or equipment_suggestions reason — "last time", "previously", "again" — because those are shown to the patient.`;
+
+/** The PRIOR CARE block. Empty string when there's nothing to say, so the
+ *  prompt without history is byte-for-byte what it was before this existed. */
+export function formatHistory(history: PriorCare[] | undefined): string {
+  const items = (history ?? []).filter((h) => h.watchFor.trim());
+  if (items.length === 0) return "";
+  const lines = [
+    "PRIOR CARE WITH THIS CLINIC (background about this person — each was a DIFFERENT problem and is NOT evidence about today)",
+  ];
+  for (const h of items) {
+    lines.push(`- ${h.condition}, closed ${h.closedYear}. The PT's note: "${h.watchFor.trim()}"`);
+  }
+  return lines.join("\n");
+}
+
+/** Phrases that mean a patient-facing field is talking about earlier care. */
+const HISTORY_ECHO_RE =
+  /\b(last time|previous(?:ly)?|prior (?:episode|care|round)|earlier (?:episode|round|time)|your last|last (?:episode|round|year)|as before|once again|like before)\b/i;
+
+/** Patient-facing strings (rationales, equipment reasons) that echo earlier
+ *  care. Only meaningful when history was supplied — the caller checks. */
+export function historyEchoes(texts: string[]): string[] {
+  return texts.filter((t) => HISTORY_ECHO_RE.test(t));
+}
 
 function progressSection(progress: ProgressContext): string {
   const lines: string[] = [];
@@ -551,6 +607,47 @@ export function formatIntake(intake: IntakeForPrompt): string {
   return lines.join("\n");
 }
 
+/** The first-draft / revamp user message, assembled without any I/O so it can
+ *  be tested: where the history block sits and what it contains are rules, not
+ *  accidents. A revamp NEVER gets history — six weeks of evidence about NOW
+ *  is the better anchor, and history there would only add a wrong one. */
+export function buildDraftUserMessage(args: {
+  intake: IntakeForPrompt;
+  equipmentNames: string[];
+  catalog: { slug: string; name: string }[];
+  slice: SliceExercise[];
+  progress?: ProgressContext;
+  history?: PriorCare[];
+}): string {
+  const { intake, equipmentNames, catalog, slice, progress } = args;
+  const libraryLines = slice
+    .map(
+      (e) =>
+        `${e.id} | ${e.name} | ${e.kind} | dosage_type=${e.dosage_type} | difficulty ${e.difficulty ?? "?"}/5 | ${e.position ?? "-"} | ${e.body_regions.join(",")} | equipment: ${e.equipment.join("+") || "none"} | home_eligible=${e.home_eligible}`,
+    )
+    .join("\n");
+  const priorCare = progress ? "" : formatHistory(args.history);
+
+  return `${progress ? `${progressSection(progress)}\n\n` : ""}${formatIntake(intake)}
+${priorCare ? `\n${priorCare}\n` : ""}
+PATIENT HOME EQUIPMENT: ${equipmentNames.join(", ") || "none recorded"} (plus assumed household: wall, chair, towel, a step)
+
+EQUIPMENT CATALOG (slug | name) — for equipment_suggestions only:
+${catalog.map((c) => `${c.slug} | ${c.name}`).join("\n")}
+
+LIBRARY (id | name | kind | dosage_type | difficulty | position | regions | equipment | home_eligible)
+${libraryLines}
+
+${progress ? "Propose the REVISED plan via the propose_plan tool." : "Propose the plan via the propose_plan tool."}`;
+}
+
+/** The system prompt a draft runs under. History rules attach to a FIRST draft
+ *  that has prior care to read, and to nothing else. */
+export function draftSystemPrompt(progress?: ProgressContext, history?: PriorCare[]): string {
+  if (progress) return REVAMP_SYSTEM_PROMPT;
+  return formatHistory(history) ? `${SYSTEM_PROMPT}${HISTORY_RULES}` : SYSTEM_PROMPT;
+}
+
 async function litheDraft(
   intake: IntakeForPrompt,
   equipmentNames: string[],
@@ -558,6 +655,7 @@ async function litheDraft(
   slice: SliceExercise[],
   jwt: string,
   progress?: ProgressContext,
+  history?: PriorCare[],
 ): Promise<{ raw: unknown[]; model: string; rawSuggestions: unknown; ptNote: string | null }> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const coreUrl = (
@@ -569,32 +667,15 @@ async function litheDraft(
 
   const client = new Anthropic({ baseURL: `${coreUrl}/v1/ai`, authToken: jwt, apiKey: null });
 
-  const libraryLines = slice
-    .map(
-      (e) =>
-        `${e.id} | ${e.name} | ${e.kind} | dosage_type=${e.dosage_type} | difficulty ${e.difficulty ?? "?"}/5 | ${e.position ?? "-"} | ${e.body_regions.join(",")} | equipment: ${e.equipment.join("+") || "none"} | home_eligible=${e.home_eligible}`,
-    )
-    .join("\n");
-
-  const user = `${progress ? `${progressSection(progress)}\n\n` : ""}${formatIntake(intake)}
-
-PATIENT HOME EQUIPMENT: ${equipmentNames.join(", ") || "none recorded"} (plus assumed household: wall, chair, towel, a step)
-
-EQUIPMENT CATALOG (slug | name) — for equipment_suggestions only:
-${catalog.map((c) => `${c.slug} | ${c.name}`).join("\n")}
-
-LIBRARY (id | name | kind | dosage_type | difficulty | position | regions | equipment | home_eligible)
-${libraryLines}
-
-${progress ? "Propose the REVISED plan via the propose_plan tool." : "Propose the plan via the propose_plan tool."}`;
+  const user = buildDraftUserMessage({ intake, equipmentNames, catalog, slice, progress, history });
 
   const res = await client.messages.create({
     model,
     // Headroom over the tool JSON — adaptive thinking shares this budget.
     max_tokens: 8192,
-    system: progress ? REVAMP_SYSTEM_PROMPT : SYSTEM_PROMPT,
+    system: draftSystemPrompt(progress, history),
     messages: [{ role: "user", content: user }],
-    tools: [PLAN_TOOL],
+    tools: [!progress && formatHistory(history) ? PLAN_TOOL_WITH_HISTORY : PLAN_TOOL],
     tool_choice: { type: "tool", name: "propose_plan" },
   });
 
@@ -626,8 +707,12 @@ export async function draftPlan(args: {
   /** Present for a revamp: what the patient has actually done since the
    *  current plan was approved. Absent for a first draft. */
   progress?: ProgressContext;
+  /** Earlier closed episodes with this clinic, as the PT's own "watch for"
+   *  lines. First drafts only — ignored when `progress` is present. */
+  history?: PriorCare[];
 }): Promise<DraftResult> {
   const { pool, intake, patientUserId, clinicId, jwt, progress } = args;
+  const history = progress ? undefined : args.history;
   const regions = intake.body_regions.length ? intake.body_regions : ["knee"];
   const slice = await buildLibrarySlice(
     pool,
@@ -660,7 +745,7 @@ export async function draftPlan(args: {
   let rawSuggestions: unknown = null;
   let aiNote: string | null = null;
   if (mode === "lithe") {
-    const out = await litheDraft(intake, equipmentNames, catalog, slice, jwt, progress);
+    const out = await litheDraft(intake, equipmentNames, catalog, slice, jwt, progress, history);
     raw = out.raw;
     model = out.model;
     rawSuggestions = out.rawSuggestions;
@@ -684,5 +769,20 @@ export async function draftPlan(args: {
 
   const { items, dropped } = validateItems(raw, slice);
   const equipmentSuggestions = validateEquipmentSuggestions(rawSuggestions, catalog, ownedSlugs);
+
+  // The rule says earlier care never appears in patient-facing text. A rule a
+  // model can break needs a check: when history was supplied and a rationale or
+  // equipment reason still reads like "last time…", say so on the PT-only
+  // channel — they edit rationales before approving, and need to know which.
+  if (formatHistory(history)) {
+    const echoed = historyEchoes([
+      ...items.map((i) => i.rationale),
+      ...equipmentSuggestions.map((e) => e.reason),
+    ]);
+    if (echoed.length > 0) {
+      const warn = `Heads-up: ${echoed.length === 1 ? "a rationale or suggestion mentions" : `${echoed.length} rationales or suggestions mention`} earlier care ("last time", "previously"…). The patient will read it — reword before approving.`;
+      aiNote = aiNote ? `${aiNote} ${warn}` : warn;
+    }
+  }
   return { items, mode, model, droppedItems: dropped, equipmentSuggestions, aiNote };
 }

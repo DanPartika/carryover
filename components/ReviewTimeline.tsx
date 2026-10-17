@@ -71,22 +71,30 @@ export default function ReviewTimeline({
   clinicId,
   /** Bump to refetch — the page increments it whenever a review is recorded. */
   refreshKey,
+  /** A specific (past) episode. Omitted: the open one. */
+  episodeId,
+  /** Inside a history card: just the list, always open, no card of its own. */
+  embedded = false,
 }: {
   patientId: string;
   clinicId: string;
   refreshKey: number;
+  episodeId?: string;
+  embedded?: boolean;
 }) {
   const [reviews, setReviews] = useState<ReviewRow[] | null>(null);
   const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch(`/api/patients/${patientId}/reviews?clinicId=${clinicId}`);
+      const res = await apiFetch(
+        `/api/patients/${patientId}/reviews?clinicId=${clinicId}${episodeId ? `&episodeId=${episodeId}` : ""}`,
+      );
       if (res.ok) setReviews(((await res.json()) as { reviews: ReviewRow[] }).reviews);
     } catch {
       // The page works without history; silence over a broken section.
     }
-  }, [patientId, clinicId]);
+  }, [patientId, clinicId, episodeId]);
 
   useEffect(() => {
     // setState runs inside load() after an await, not in the effect body.
@@ -94,7 +102,51 @@ export default function ReviewTimeline({
     void load();
   }, [load, refreshKey]);
 
-  if (!reviews || reviews.length === 0) return null;
+  if (!reviews) return embedded ? <p className="text-sm text-muted">Loading…</p> : null;
+  if (reviews.length === 0) {
+    return embedded ? (
+      <p className="text-sm text-muted">No check-in decisions were recorded in this episode.</p>
+    ) : null;
+  }
+
+  const list = (
+    <ul className={embedded ? "space-y-2" : "mt-3 space-y-2"}>
+      {reviews.map((r) => {
+        const [icon, label] = OUTCOME[r.outcome] ?? ["·", r.outcome];
+        const line = contextLine(r.context);
+        return (
+          <li key={r.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="font-medium">
+                <span className="mr-1.5" aria-hidden>
+                  {icon}
+                </span>
+                {label}
+              </span>
+              <span className="text-xs text-muted">
+                {day(r.on)}
+                {r.reviewedByName ? ` · ${r.reviewedByName}` : ""}
+              </span>
+            </div>
+            {r.note && <p className="mt-0.5">{r.note}</p>}
+            {line && <p className="mt-0.5 text-xs text-muted">{line}</p>}
+            {r.context?.goals?.length ? (
+              <p className="mt-0.5 text-xs tabular-nums text-muted">
+                {r.context.goals
+                  .map(
+                    (g) =>
+                      `${g.activity}: ${g.baseline}${g.current !== null ? ` → ${g.current}` : ""}`,
+                  )
+                  .join(" · ")}
+              </p>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  if (embedded) return list;
 
   return (
     <section className="rounded-xl border border-edge bg-card p-5">
@@ -110,44 +162,7 @@ export default function ReviewTimeline({
         </span>
       </button>
 
-      {open && (
-        <ul className="mt-3 space-y-2">
-          {reviews.map((r) => {
-            const [icon, label] = OUTCOME[r.outcome] ?? ["·", r.outcome];
-            const line = contextLine(r.context);
-            return (
-              <li key={r.id} className="rounded-lg bg-raise/60 px-3 py-2 text-sm">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                  <span className="font-medium">
-                    <span className="mr-1.5" aria-hidden>
-                      {icon}
-                    </span>
-                    {label}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {day(r.on)}
-                    {r.reviewedByName ? ` · ${r.reviewedByName}` : ""}
-                  </span>
-                </div>
-                {r.note && <p className="mt-0.5">{r.note}</p>}
-                {line && <p className="mt-0.5 text-xs text-muted">{line}</p>}
-                {r.context?.goals?.length ? (
-                  <p className="mt-0.5 text-xs tabular-nums text-muted">
-                    {r.context.goals
-                      .map(
-                        (g) =>
-                          `${g.activity}: ${g.baseline}${
-                            g.current !== null ? ` → ${g.current}` : ""
-                          }`,
-                      )
-                      .join(" · ")}
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {open && list}
     </section>
   );
 }

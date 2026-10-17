@@ -172,32 +172,48 @@ export async function reviewSignals(
      ORDER BY episode_id, created_at DESC`,
     [episodeIds],
   );
+  // Every re-rate row, newest first. A PT can rate ONE goal in the room, so
+  // "where does this goal stand" is the newest row that actually contains it —
+  // reading only the newest row reported the other two as never re-rated.
   const { rows: goalLatest } = await pool.query<{
     episodeId: string;
     ratings: LimitedActivity[];
     on: string;
   }>(
-    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
-            ratings, ${dayOf("created_at")}::text AS "on"
+    `SELECT episode_id AS "episodeId", ratings, ${dayOf("created_at")}::text AS "on"
      FROM goal_ratings WHERE episode_id = ANY($1::uuid[])
-     ORDER BY episode_id, created_at DESC`,
+     ORDER BY created_at DESC`,
     [episodeIds],
   );
-  const latestRatings = new Map(goalLatest.map((g) => [g.episodeId, g]));
+  const ratingRows = new Map<string, { ratings: LimitedActivity[]; on: string }[]>();
+  for (const g of goalLatest) {
+    const list = ratingRows.get(g.episodeId);
+    if (list) list.push(g);
+    else ratingRows.set(g.episodeId, [g]);
+  }
   const goalsByEpisode = new Map<string, GoalProgressRow[]>();
   for (const base of goalBase) {
-    const latest = latestRatings.get(base.episodeId);
+    const rows = ratingRows.get(base.episodeId) ?? [];
     const key = (s: string) => s.trim().toLowerCase();
     goalsByEpisode.set(
       base.episodeId,
       base.activities.map((a) => {
-        const match = latest?.ratings.find((r) => key(r.activity) === key(a.activity));
+        let current: number | null = null;
+        let currentOn: string | null = null;
+        for (const row of rows) {
+          const match = row.ratings.find((r) => key(r.activity) === key(a.activity));
+          if (match) {
+            current = match.rating;
+            currentOn = row.on;
+            break;
+          }
+        }
         return {
           activity: a.activity,
           baseline: a.rating,
           baselineOn: base.on,
-          current: match?.rating ?? null,
-          currentOn: match ? latest!.on : null,
+          current,
+          currentOn,
         };
       }),
     );

@@ -7,9 +7,11 @@
 // no PT-facing controls.
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, EPISODE_CLOSED_EVENT } from "@/lib/api/client";
 import { GoalCheck, type GoalRow } from "@/components/Goals";
+import PastCare from "@/components/PastCare";
 import PatientIntake from "@/components/PatientIntake";
+import type { PatientPastEpisode } from "@/lib/episodes/shape";
 import { withBase } from "@/lib/config/basePath";
 import { doneText, dosageLine, dosageText, dosageTypeOf, type DosageType } from "@/lib/dosage";
 import { imageFitClass, imageSrc } from "@/lib/media";
@@ -1004,19 +1006,33 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
   );
 }
 
+function StaleBanner() {
+  return (
+    <p className="rounded-lg border border-edge bg-raise/60 px-3 py-2 text-sm" role="status">
+      Your care was updated while this page was open — it&apos;s been refreshed to show where
+      things stand now.
+    </p>
+  );
+}
+
 export default function PatientToday() {
   const [data, setData] = useState<PlanData | null>(null);
   const [visits, setVisits] = useState<Visit[] | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [past, setPast] = useState<PatientPastEpisode[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Set when a request was refused because the care episode it belonged to has
+  // since been closed — this page was out of date, and says so after reloading.
+  const [stale, setStale] = useState(false);
   const [tab, setTab] = useState<"home" | "office">("home");
 
   async function load() {
     try {
-      const [planRes, visitRes, notesRes] = await Promise.all([
+      const [planRes, visitRes, notesRes, pastRes] = await Promise.all([
         apiFetch("/api/me/plan"),
         apiFetch("/api/me/visits"),
         apiFetch("/api/me/notes"),
+        apiFetch("/api/me/episodes"),
       ]);
       if (!planRes.ok) {
         setError(`load failed (${planRes.status})`);
@@ -1027,6 +1043,9 @@ export default function PatientToday() {
       // exercises are the reason the patient opened the app.
       if (visitRes.ok) setVisits(((await visitRes.json()) as { visits: Visit[] }).visits);
       if (notesRes.ok) setNotes(((await notesRes.json()) as { notes: Note[] }).notes);
+      if (pastRes.ok) {
+        setPast(((await pastRes.json()) as { episodes: PatientPastEpisode[] }).episodes);
+      }
     } catch {
       setError("network error — pull to refresh");
     }
@@ -1037,6 +1056,15 @@ export default function PatientToday() {
     // effect body — the compiler lint can't see through the function boundary.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+  }, []);
+
+  useEffect(() => {
+    const onClosed = () => {
+      setStale(true);
+      void load();
+    };
+    window.addEventListener(EPISODE_CLOSED_EVENT, onClosed);
+    return () => window.removeEventListener(EPISODE_CLOSED_EVENT, onClosed);
   }, []);
 
   async function toggleEquipment(id: string, owned: boolean) {
@@ -1058,19 +1086,31 @@ export default function PatientToday() {
   if (!data.plan) {
     // No plan yet is not nothing to do: the pre-visit intake is the single
     // most useful thing a patient can hand their PT, the equipment shelf
-    // shapes the first AI draft, and the journal still reaches the PT.
+    // shapes the first AI draft, and the journal still reaches the PT. After a
+    // course of care has wrapped up there is no open episode to write against,
+    // so the journal steps aside and the history takes its place.
+    const wrappedUp = past.length > 0 && !data.episode;
+    const holdNewEpisode = wrappedUp && past[0].recent;
     return (
       <div className="space-y-5">
+        {stale && <StaleBanner />}
         <PtMessages notes={notes} />
         <div className="rounded-xl border border-edge bg-card p-6 text-center">
-          <p className="font-semibold">No active plan yet</p>
+          <p className="font-semibold">
+            {wrappedUp ? "Your plan has wrapped up" : "No active plan yet"}
+          </p>
           <p className="mt-1 text-sm text-muted">
-            Once your PT approves your program, it shows up here.
+            {wrappedUp
+              ? holdNewEpisode
+                ? "Your PT closed out your last course of care — their summary is below."
+                : "Your last course of care has wrapped up — your history is below. If something new is going on, tell your PT with the form below; your next plan shows up here once they approve it."
+              : "Once your PT approves your program, it shows up here."}
           </p>
         </div>
-        <PatientIntake />
+        <PastCare episodes={past} openNewest={!data.episode} />
+        {!holdNewEpisode && <PatientIntake returning={past.length > 0} />}
         <EquipmentShelf equipment={data.equipment} onToggle={(id, o) => void toggleEquipment(id, o)} />
-        <Journal notes={notes} onChanged={() => void load()} />
+        {data.episode && <Journal notes={notes} onChanged={() => void load()} />}
         <CalendarSync />
       </div>
     );
@@ -1087,6 +1127,7 @@ export default function PatientToday() {
 
   return (
     <div className="space-y-5">
+      {stale && <StaleBanner />}
       <section>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-extrabold tracking-tight">Today</h1>
@@ -1267,6 +1308,8 @@ export default function PatientToday() {
       <RaiseHand current={data.checkin} onChanged={() => void load()} />
 
       <Journal notes={notes} onChanged={() => void load()} />
+
+      <PastCare episodes={past} openNewest={false} />
 
       <CalendarSync />
     </div>

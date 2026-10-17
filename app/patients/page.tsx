@@ -21,6 +21,8 @@ type Row = {
   lastLoggedOn: string | null;
   reviewDue: boolean;
   reviewLine: string;
+  closedEpisodes: number;
+  lastClosedOn: string | null;
 };
 
 const QUIET_AFTER_DAYS = 4;
@@ -51,6 +53,14 @@ function StatusChip({ row }: { row: Row }) {
   if (row.episodeId)
     return (
       <span className="rounded-full bg-raise px-2.5 py-0.5 text-xs text-muted">intake done</span>
+    );
+  if (row.closedEpisodes > 0)
+    return (
+      <span className="rounded-full bg-raise px-2.5 py-0.5 text-xs text-muted">
+        {row.lastClosedOn
+          ? `ended ${new Date(`${row.lastClosedOn}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+          : "episode closed"}
+      </span>
     );
   return (
     <span className="rounded-full bg-raise px-2.5 py-0.5 text-xs text-muted">needs intake</span>

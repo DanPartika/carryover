@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse, lockOpenEpisode } from "@/lib/episodes/guard";
 import { recordReview, resolveOpenRequest } from "@/lib/review/record";
 import { reviewContext, reviewSignals } from "@/lib/review/signals";
 
@@ -27,9 +28,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     [id],
   );
   if (!plan) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (!(await episodeForActor(pool, plan.episode_id, user.id))) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const episode = await episodeForActor(pool, plan.episode_id, user.id);
+  if (!episode) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (episode.closed) return closedEpisodeResponse();
   if (plan.status !== "draft") {
     return NextResponse.json({ error: "plan is not a draft" }, { status: 409 });
   }
@@ -61,6 +62,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (!(await lockOpenEpisode(client, plan.episode_id))) {
+      await client.query("ROLLBACK");
+      return closedEpisodeResponse();
+    }
     const { rows: retired } = await client.query<{ id: string }>(
       `UPDATE plans SET status = 'retired', retired_at = now()
        WHERE episode_id = $1 AND status = 'active' RETURNING id`,

@@ -24,24 +24,35 @@ export async function goalRows(pool: Pool, episodeId: string): Promise<GoalProgr
   );
   if (!base) return null;
 
-  const {
-    rows: [latest],
-  } = await pool.query<{ ratings: LimitedActivity[]; on: string }>(
+  // Newest first: a PT can rate a single goal in the room, so each goal's
+  // "now" is the newest row that actually contains it, not just the newest row.
+  const { rows: ratingRows } = await pool.query<{ ratings: LimitedActivity[]; on: string }>(
     `SELECT ratings, ${dayOf("created_at")}::text AS "on"
      FROM goal_ratings WHERE episode_id = $1
-     ORDER BY created_at DESC LIMIT 1`,
+     ORDER BY created_at DESC`,
     [episodeId],
   );
 
   const key = (s: string) => s.trim().toLowerCase();
   return base.activities.map((a) => {
-    const match = latest?.ratings.find((r) => key(r.activity) === key(a.activity));
+    for (const row of ratingRows) {
+      const match = row.ratings.find((r) => key(r.activity) === key(a.activity));
+      if (match) {
+        return {
+          activity: a.activity,
+          baseline: a.rating,
+          baselineOn: base.on,
+          current: match.rating,
+          currentOn: row.on,
+        };
+      }
+    }
     return {
       activity: a.activity,
       baseline: a.rating,
       baselineOn: base.on,
-      current: match?.rating ?? null,
-      currentOn: match ? latest.on : null,
+      current: null,
+      currentOn: null,
     };
   });
 }

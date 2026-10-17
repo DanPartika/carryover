@@ -75,7 +75,14 @@ export async function GET(req: NextRequest) {
     state = rowCount ? "none" : "no_clinic";
   }
 
-  return NextResponse.json({ state, intake, birthYear: me?.birth_year ?? null });
+  // episodeId rides along so the form can say, on submit, which episode state
+  // it was shown — see the stale check in POST.
+  return NextResponse.json({
+    state,
+    intake,
+    birthYear: me?.birth_year ?? null,
+    episodeId: episode?.id ?? null,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -105,6 +112,19 @@ export async function POST(req: NextRequest) {
        ORDER BY e.opened_at DESC LIMIT 1 FOR UPDATE OF e`,
       [user.id],
     );
+
+    // The form was rendered against a particular episode state: this episode,
+    // or none. If that is no longer the truth (the episode was closed, or a PT
+    // opened one) saving would silently create or append to the wrong thing, so
+    // refuse and let the page reload.
+    const expected = typeof body?.expectEpisodeId === "string" ? body.expectEpisodeId : null;
+    if ((episode?.id ?? null) !== expected) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { error: "things changed while this was open — reload and try again", code: "stale" },
+        { status: 409 },
+      );
+    }
 
     if (episode?.active_plan) {
       await client.query("ROLLBACK");
@@ -153,9 +173,21 @@ export async function POST(req: NextRequest) {
         rows: [episode],
       } = await client.query<EpisodeRow>(
         `INSERT INTO episodes (clinic_id, patient_user_id, condition)
-         VALUES ($1, $2, $3) RETURNING id, clinic_id, false AS active_plan`,
+         VALUES ($1, $2, $3)
+         ON CONFLICT (clinic_id, patient_user_id) WHERE closed_at IS NULL DO NOTHING
+         RETURNING id, clinic_id, false AS active_plan`,
         [clinic.clinic_id, user.id, condition],
       ));
+      if (!episode) {
+        // Lost a race to another request that opened this patient's episode
+        // a moment ago (their PT starting the intake, or a double-tap). Their
+        // row now exists; this submission must not guess how to merge into it.
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { error: "your intake was just started somewhere else — reload to see it" },
+          { status: 409 },
+        );
+      }
     }
 
     const {

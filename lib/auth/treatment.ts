@@ -19,7 +19,21 @@ export async function canTreat(
   );
   if (rows.length > 0) return true;
   const roles = await rolesInClinic(pool, actorUserId, clinicId);
-  return roles.includes("admin");
+  if (!roles.includes("admin")) return false;
+  // An admin's reach is their clinic's patients — not any user id they can
+  // name. Without this, "admin of clinic A" plus a patient id from anywhere
+  // reads that person's logs, notes and now their episode history.
+  const { rowCount } = await pool.query(
+    `SELECT 1 FROM clinic_members
+      WHERE clinic_id = $1 AND user_id = $2 AND role = 'patient' AND active
+     UNION ALL
+     SELECT 1 FROM episodes WHERE clinic_id = $1 AND patient_user_id = $2
+     UNION ALL
+     SELECT 1 FROM pt_patients WHERE clinic_id = $1 AND patient_user_id = $2
+     LIMIT 1`,
+    [clinicId, patientUserId],
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 /** Resolve a visit and verify the actor may treat the patient it belongs to.
@@ -49,19 +63,26 @@ export async function visitForActor(
   return { id: v.id, episodeId: v.episode_id, endedAt: v.ended_at };
 }
 
-/** Resolve an episode and verify the actor may treat its patient. */
+/** Resolve an episode and verify the actor may treat its patient. `closed`
+ *  is what lets a mutating route refuse to write into a finished episode. */
 export async function episodeForActor(
   pool: Pool,
   episodeId: string,
   actorUserId: string,
-): Promise<{ id: string; clinicId: string; patientUserId: string } | null> {
+): Promise<{ id: string; clinicId: string; patientUserId: string; closed: boolean } | null> {
   const { rows } = await pool.query<{
     id: string;
     clinic_id: string;
     patient_user_id: string;
-  }>("SELECT id, clinic_id, patient_user_id FROM episodes WHERE id = $1", [episodeId]);
+    closed_at: Date | null;
+  }>("SELECT id, clinic_id, patient_user_id, closed_at FROM episodes WHERE id = $1", [episodeId]);
   if (rows.length === 0) return null;
   const e = rows[0];
   if (!(await canTreat(pool, actorUserId, e.patient_user_id, e.clinic_id))) return null;
-  return { id: e.id, clinicId: e.clinic_id, patientUserId: e.patient_user_id };
+  return {
+    id: e.id,
+    clinicId: e.clinic_id,
+    patientUserId: e.patient_user_id,
+    closed: e.closed_at !== null,
+  };
 }

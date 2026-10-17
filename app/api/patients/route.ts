@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
-import { APP_DAY } from "@/lib/dates";
+import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { reviewSignals } from "@/lib/review/signals";
 
@@ -35,15 +35,28 @@ export async function GET(req: NextRequest) {
             -- Between-visit triage (PRD build step 5): who raised a hand, and
             -- who has gone quiet. Flags age out after two weeks, which is also
             -- the app's only "resolve" — there is no acknowledge action yet.
-            -- Patient-scoped, not active-plan-scoped: a flag raised Tuesday
-            -- must not vanish from this list because the plan was revised
-            -- Wednesday, and "quiet for N days" is about the person logging,
-            -- not about which revision they logged under.
+            -- Patient-scoped within the OPEN EPISODE, not active-plan-scoped: a
+            -- flag raised Tuesday must not vanish because the plan was revised
+            -- Wednesday, and "quiet for N days" is about the person logging, not
+            -- about which revision they logged under. But bounded by the episode
+            -- itself: a patient back after two years would otherwise read "quiet
+            -- 600d" on the day their new plan was approved, and a patient whose
+            -- episode just closed would keep a flag chip for two weeks.
             (SELECT count(*)::int FROM adherence_logs al
-             WHERE al.patient_user_id = u.id
-               AND al.flag_for_pt AND al.log_date > ${APP_DAY} - 14) AS "flagCount",
+             WHERE ep.id IS NOT NULL AND al.patient_user_id = u.id
+               AND al.flag_for_pt AND al.log_date > ${APP_DAY} - 14
+               AND al.log_date >= ${dayOf("ep.opened_at")}) AS "flagCount",
             (SELECT max(al.log_date)::text FROM adherence_logs al
-             WHERE al.patient_user_id = u.id AND al.completed) AS "lastLoggedOn"
+             WHERE ep.id IS NOT NULL AND al.patient_user_id = u.id AND al.completed
+               AND al.log_date >= ${dayOf("ep.opened_at")}) AS "lastLoggedOn",
+            -- A patient whose only episodes are closed is not "needs intake":
+            -- the list says so, with the date, and links straight to the history.
+            (SELECT count(*)::int FROM episodes ce
+             WHERE ce.patient_user_id = u.id AND ce.clinic_id = r.clinic_id
+               AND ce.closed_at IS NOT NULL) AS "closedEpisodes",
+            (SELECT max(COALESCE(ce.ended_on, ${dayOf("ce.closed_at")}))::text FROM episodes ce
+             WHERE ce.patient_user_id = u.id AND ce.clinic_id = r.clinic_id
+               AND ce.closed_at IS NOT NULL) AS "lastClosedOn"
      FROM reachable r
      JOIN users u ON u.id = r.patient_user_id
      JOIN clinics c ON c.id = r.clinic_id

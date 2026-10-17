@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { episodeForActor } from "@/lib/auth/treatment";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse } from "@/lib/episodes/guard";
 
 type ItemInput = {
   exerciseId?: string;
@@ -47,9 +48,11 @@ async function loadDraftPlan(
     [planId],
   );
   if (!plan) return { error: NextResponse.json({ error: "not found" }, { status: 404 }) };
-  if (!(await episodeForActor(pool, plan.episode_id, user.id))) {
+  const episode = await episodeForActor(pool, plan.episode_id, user.id);
+  if (!episode) {
     return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
+  if (episode.closed) return { error: closedEpisodeResponse() };
   if (plan.status !== "draft") {
     return {
       error: NextResponse.json(

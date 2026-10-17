@@ -45,7 +45,11 @@ export async function GET(req: NextRequest) {
      -- patient — which is exactly how this app gets dogfooded, and it showed
      -- the private note under the patient's journal. This endpoint means
      -- "what a patient may see", so that is all it asks for.
-     WHERE ep.patient_user_id = $1 AND n.shared
+     -- Open episodes only: this is Today's "From your PT" and journal, which mean
+     -- THIS course of care. A finished episode's messages ("hold off squats
+     -- until the swelling settles") read as current instructions a year later,
+     -- and its journal is closed — it lives in the history card instead.
+     WHERE ep.patient_user_id = $1 AND n.shared AND ep.closed_at IS NULL
      ORDER BY n.created_at DESC LIMIT ${LIMIT}`,
     [user.id],
   );
