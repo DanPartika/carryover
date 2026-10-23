@@ -13,6 +13,7 @@ import { useAuth } from "@/components/AuthContext";
 import CloseEpisode from "@/components/CloseEpisode";
 import ExerciseComposer from "@/components/ExerciseComposer";
 import { GoalsPanel } from "@/components/Goals";
+import IntakeDocuments from "@/components/IntakeDocuments";
 import IntakeForm, { type IntakePayload } from "@/components/IntakeForm";
 import IntakeSummary from "@/components/IntakeSummary";
 import NotesPanel from "@/components/NotesPanel";
@@ -491,6 +492,9 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
             patientSubmitted={data.latestIntake.patientSubmitted}
           />
         )}
+        {!showIntake && data.latestIntake && data.episode && (
+          <IntakeDocuments key={data.episode.id} episodeId={data.episode.id} viewer="pt" />
+        )}
         {!showIntake && !data.latestIntake && (
           <p className="mt-2 text-sm text-muted">
             {!data.episode && data.pastEpisodes.count > 0
@@ -508,6 +512,7 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
             submitLabel="Save intake"
             onSubmit={(p) => void submitIntake(p)}
             onCancel={() => setShowIntake(false)}
+            ptContext={{ clinicId, patientUserId: patientId, episodeId: data.episode?.id ?? null }}
           />
         )}
       </section>
@@ -902,15 +907,22 @@ export default function PatientPage({ params }: { params: Promise<{ id: string }
         {!draftItems && activePlan && data.episode && (
           <div className="mt-1">
             <ReviewBanner review={data.review} patientName={name} />
-            {(data.review?.goals?.length ?? 0) > 0 && (
-              <GoalsPanel
-                goals={data.review!.goals!}
-                patientId={patientId}
-                clinicId={clinicId}
-                patientName={name}
-                onChanged={reload}
-              />
-            )}
+            {/* Rendered with no goals too: "add what they want back" is how a
+                patient whose intake named none gets their first. */}
+            <GoalsPanel
+              goals={data.review?.goals ?? []}
+              patientId={patientId}
+              clinicId={clinicId}
+              patientName={name}
+              ideaContext={{
+                condition: data.latestIntake?.condition ?? data.episode.condition,
+                side: data.latestIntake?.side ?? null,
+                bodyRegions: data.latestIntake?.bodyRegions ?? [],
+                restrictions: data.latestIntake?.restrictions ?? null,
+                assistiveDevice: data.latestIntake?.assistiveDevice ?? null,
+              }}
+              onChanged={reload}
+            />
             <p className="mt-3 text-xs text-muted">
               Active since {new Date(activePlan.approvedAt!).toLocaleDateString()} ·{" "}
               {activePlan.source === "ai-draft"

@@ -1,5 +1,5 @@
 {
-  "_comment": "Ankle-foot rehab corridor (post-sprain, Achilles tendinopathy, plantar fasciitis) — ROM through banded strengthening to balance, gait, and eccentric loading. Authored in-house: original instruction text, mechanics are facts, phrasing is ours. heel-raise and ankle-pumps live in the knee corridor and are deliberately not duplicated here.",
+  "_comment": "Ankle-foot rehab corridor (post-sprain, Achilles tendinopathy, plantar fasciitis) — ROM through banded strengthening to balance, gait, and eccentric loading. Authored in-house: original instruction text, mechanics are facts, phrasing is ours. heel-raise and ankle-pumps live in the knee corridor and are deliberately not duplicated here. The foot-intrinsics group (toe spreading, toe yoga, short-foot, marble pickup, loaded towel scrunch) is seated so it stays available while weight bearing is restricted; the standing short-foot is the one that loads the foot, and the edges leading to it say standing must be cleared first.",
   "exercises": [
     {
       "key": "ankle-alphabet",
@@ -164,6 +164,108 @@
         "Place the other foot back down and rise with both legs again — never push up on the working leg alone.",
         "The slow lowering is the exercise; mild soreness in the tendon is acceptable, sharp pain means stop."
       ]
+    },
+    {
+      "key": "toe-spread",
+      "name": "Toe Spreading",
+      "position": "seated",
+      "difficulty": 1,
+      "dosage_type": "hold",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "toes", "strengthening", "early-phase"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Sit tall in a chair with your bare foot resting on the floor — resting only, with no weight sent down through it.",
+        "Without curling the toes under or lifting the heel, spread your toes as wide apart as you can, like opening a fan.",
+        "Hold the spread steady while you breathe normally, then let the toes relax completely.",
+        "If the toes won't separate at first, ease them apart with your fingers a few times and then try again on your own.",
+        "If the arch of your foot cramps, rest it and gently stretch the toes back before the next hold."
+      ]
+    },
+    {
+      "key": "toe-yoga",
+      "name": "Toe Yoga (Big Toe Lift & Press)",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "toes", "strengthening", "coordination"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Sit tall with your bare foot resting flat on the floor, heel and ball of the foot down.",
+        "Lift only your big toe toward the ceiling while the other four toes stay pressed to the floor.",
+        "Lower the big toe and press it firmly down, then lift the other four toes while the big toe stays down.",
+        "Move slowly. It is normal for this to feel awkward at first — if the toes won't separate, lift them all together and work toward lifting one at a time.",
+        "Keep the heel down and the ankle still for the whole set."
+      ]
+    },
+    {
+      "key": "short-foot-seated",
+      "name": "Short-Foot (Arch Doming), Seated",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "hold",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "arch", "strengthening", "stability"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Sit tall with your bare foot resting flat on the floor and your knee bent to roughly a right angle.",
+        "Without curling your toes, draw the ball of your foot back toward your heel so the arch lifts into a gentle dome, as if shortening the foot.",
+        "Keep the toes long and relaxed, with the big toe, little toe and heel all staying in light contact with the floor.",
+        "Hold the dome while you breathe normally, then release.",
+        "The movement is small. If the toes claw or the arch cramps, ease off — a gentle, controlled dome is the goal."
+      ]
+    },
+    {
+      "key": "marble-pickup",
+      "name": "Marble Pickup",
+      "position": "seated",
+      "difficulty": 2,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "toes", "strengthening", "coordination"],
+      "equipment": ["none", "chair"],
+      "instructions": [
+        "Sit in a chair with about ten marbles on the floor in front of you and a bowl beside them. Cotton balls or crumpled tissue work too.",
+        "Using only your toes, grip one marble, lift it, and carry it over to the bowl.",
+        "Let it drop into the bowl, then go back for the next one until the marbles have all moved.",
+        "Keep the heel resting down and let the toes do the work; slow and deliberate beats fast.",
+        "If your toes cramp, stop and spread them wide for a few seconds before carrying on."
+      ]
+    },
+    {
+      "key": "loaded-towel-scrunch",
+      "name": "Loaded Towel Scrunch",
+      "position": "seated",
+      "difficulty": 3,
+      "dosage_type": "reps",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "toes", "strengthening"],
+      "equipment": ["towel", "chair"],
+      "instructions": [
+        "Sit in a chair with a towel spread flat on a smooth floor, your bare foot at the near edge, and a light weight — a full water bottle or a can of soup — on the far end of the towel.",
+        "Keeping your heel resting down, scrunch your toes to drag the towel toward you, pulling the weight along with it.",
+        "When the weight reaches your foot, smooth the towel back out and slide the weight to the far end to start again.",
+        "Stay with a light weight; your PT will tell you when to change it.",
+        "If the arch of your foot cramps, pause and gently stretch the toes back before continuing."
+      ]
+    },
+    {
+      "key": "short-foot-standing",
+      "name": "Short-Foot, Standing",
+      "position": "standing",
+      "difficulty": 3,
+      "dosage_type": "hold",
+      "body_regions": ["ankle_foot"],
+      "tags": ["ankle-foot-rehab", "foot-intrinsics", "arch", "stability", "balance"],
+      "equipment": ["wall"],
+      "instructions": [
+        "Stand barefoot beside a wall or counter you can touch, with your weight spread evenly across both feet.",
+        "Without curling your toes, draw the ball of the working foot back toward the heel so the arch lifts into a gentle dome.",
+        "Keep the big toe, little toe and heel pressing evenly into the floor, with the knee soft and still.",
+        "Hold the dome while you breathe normally, then relax; touch the wall whenever you need it.",
+        "If the toes claw or the arch cramps, ease off — a gentle dome held steadily is the goal."
+      ]
     }
   ],
   "progressions": [
@@ -174,6 +276,13 @@
     { "from": "band-plantarflexion", "to": "eccentric-heel-drop", "note": "Move to step loading once full-range presses against a medium band stay controlled both ways with no next-day calf soreness." },
     { "from": "wall-calf-stretch", "to": "soleus-stretch", "note": "Add the bent-knee version once the straight-knee stretch gives only a gentle pull at end range with the heel flat." },
     { "from": "soleus-stretch", "to": "eccentric-heel-drop", "note": "Start eccentric loading once both stretch positions are comfortable with the heel staying flat throughout the hold." },
-    { "from": "single-leg-balance", "to": "heel-toe-walks", "note": "Progress when a full minute of steady single-leg standing on firm ground needs no touch of the support." }
+    { "from": "single-leg-balance", "to": "heel-toe-walks", "note": "Progress when a full minute of steady single-leg standing on firm ground needs no touch of the support." },
+    { "from": "toe-spread", "to": "toe-yoga", "note": "Add the lift-and-press once all five toes spread evenly and hold without curling under." },
+    { "from": "toe-yoga", "to": "short-foot-seated", "note": "Add the arch dome once the big toe lifts and presses on its own while the other four stay quietly down." },
+    { "from": "short-foot-seated", "to": "short-foot-standing", "note": "Move to standing once the seated dome holds steady for the full count with the toes staying relaxed, and standing is cleared." },
+    { "from": "short-foot-standing", "to": "single-leg-balance", "note": "Begin single-leg balance once the standing dome holds without the toes clawing or the arch collapsing." },
+    { "from": "towel-scrunch", "to": "marble-pickup", "note": "Add the pickups once the towel gathers in smoothly with the arch staying relaxed throughout." },
+    { "from": "marble-pickup", "to": "loaded-towel-scrunch", "note": "Add resistance once every marble moves across without a drop and without the arch cramping." },
+    { "from": "loaded-towel-scrunch", "to": "short-foot-standing", "note": "Move to the standing dome once the weighted pull stays smooth and cramp-free for the full set, and standing is cleared." }
   ]
 }

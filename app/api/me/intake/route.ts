@@ -75,11 +75,22 @@ export async function GET(req: NextRequest) {
     state = rowCount ? "none" : "no_clinic";
   }
 
+  // A PT-authored intake is the clinic's working record: the patient gets back
+  // what they said, but not the PT's private precautions or the doctor's plan as
+  // the PT filed it. (Their OWN submission round-trips whole, so editing it
+  // never loses what they typed.)
+  const visible =
+    intake && intake.authorUserId !== user.id
+      ? (({ id, authorUserId, condition, createdAt }) => ({ id, authorUserId, condition, createdAt }))(
+          intake as unknown as { id: string; authorUserId: string; condition: string; createdAt: string },
+        )
+      : intake;
+
   // episodeId rides along so the form can say, on submit, which episode state
   // it was shown — see the stale check in POST.
   return NextResponse.json({
     state,
-    intake,
+    intake: visible,
     birthYear: me?.birth_year ?? null,
     episodeId: episode?.id ?? null,
   });

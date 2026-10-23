@@ -134,6 +134,17 @@ export default function IntakeSummary({
           }
         />
         <Row label="Narrative" value={intake.narrative} />
+        {intake.providerPlan && (
+          <div className="sm:col-span-2">
+            <dt className="text-muted">
+              Doctor&apos;s plan — as pasted
+              <span className="ml-2 text-xs">(the AI draft stays inside these orders)</span>
+            </dt>
+            <dd className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-edge bg-raise/40 p-2.5 font-normal">
+              {intake.providerPlan}
+            </dd>
+          </div>
+        )}
       </dl>
     </div>
   );

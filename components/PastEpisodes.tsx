@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import ClosingNumbers, { fmtDay, fmtSpan } from "@/components/ClosingNumbers";
+import IntakeDocuments from "@/components/IntakeDocuments";
 import IntakeSummary from "@/components/IntakeSummary";
 import NotesPanel from "@/components/NotesPanel";
 import ReviewTimeline from "@/components/ReviewTimeline";
@@ -250,7 +251,10 @@ function EpisodeCard({
               <div className="mt-3">
                 {tab === "intake" &&
                   (e.intake ? (
-                    <IntakeSummary intake={e.intake} birthYear={null} patientSubmitted={false} />
+                    <>
+                      <IntakeSummary intake={e.intake} birthYear={null} patientSubmitted={false} />
+                      <IntakeDocuments episodeId={e.id} viewer="pt" />
+                    </>
                   ) : (
                     <p className="text-sm text-muted">No intake was recorded.</p>
                   ))}

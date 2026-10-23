@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/components/AuthContext";
 import { useBootstrap } from "@/components/Bootstrap";
 import ExerciseComposer from "@/components/ExerciseComposer";
+import ExerciseSheet from "@/components/ExerciseSheet";
 import { imageFitClass, imageSrc, isOwnedArt } from "@/lib/media";
 
 type Item = {
@@ -299,7 +300,7 @@ function DifficultyDots({ level }: { level: number | null }) {
 
 export default function LibraryPage() {
   const { enabled, loading, session } = useAuth();
-  const { boot } = useBootstrap();
+  const { boot, isStaff } = useBootstrap();
   // The clinic this viewer can chart chain steps for — first PT/admin
   // membership. Patients (and PTs of no clinic) browse read-only.
   const chartClinicId =
@@ -321,6 +322,9 @@ export default function LibraryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
+  // What a patient sees on tapping a card: the plain how-to sheet, not the
+  // clinician's panel with its progression chain and authorship controls.
+  const [sheet, setSheet] = useState<{ id: string; name: string } | null>(null);
   const [composing, setComposing] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -375,7 +379,11 @@ export default function LibraryPage() {
     })();
   }, [authReady]);
 
-  async function openDetail(id: string) {
+  async function openDetail(id: string, name = "") {
+    if (!isStaff) {
+      setSheet({ id, name });
+      return;
+    }
     const res = await apiFetch(`/api/exercises/${id}`);
     if (res.ok) setDetail((await res.json()) as Detail);
   }
@@ -406,38 +414,42 @@ export default function LibraryPage() {
             {total} exercises{kneeCoreOnly ? " · knee-rehab core" : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={kneeCoreOnly}
-              onChange={(e) => setKneeCoreOnly(e.target.checked)}
-              className="h-4 w-4 accent-[var(--color-accent-deep)]"
-            />
-            Knee-rehab core only
-          </label>
-          <label
-            className="flex cursor-pointer items-center gap-2 text-sm text-muted"
-            title="Barbell, kettlebell, olympic, and strongman work — hidden from the clinical view by default"
-          >
-            <input
-              type="checkbox"
-              checked={includeGym}
-              onChange={(e) => setIncludeGym(e.target.checked)}
-              className="h-4 w-4 accent-[var(--color-accent-deep)]"
-            />
-            Include gym extras
-          </label>
-          <button
-            onClick={() => setComposing(true)}
-            className="rounded-full bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110"
-          >
-            ＋ New exercise
-          </button>
-        </div>
+        {/* Authoring and the clinical filters are the clinician's; a patient
+            browsing for "how do I do this" gets search and the facets. */}
+        {isStaff && (
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={kneeCoreOnly}
+                onChange={(e) => setKneeCoreOnly(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-accent-deep)]"
+              />
+              Knee-rehab core only
+            </label>
+            <label
+              className="flex cursor-pointer items-center gap-2 text-sm text-muted"
+              title="Barbell, kettlebell, olympic, and strongman work — hidden from the clinical view by default"
+            >
+              <input
+                type="checkbox"
+                checked={includeGym}
+                onChange={(e) => setIncludeGym(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-accent-deep)]"
+              />
+              Include gym extras
+            </label>
+            <button
+              onClick={() => setComposing(true)}
+              className="rounded-full bg-accent-deep px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110"
+            >
+              ＋ New exercise
+            </button>
+          </div>
+        )}
       </div>
 
-      {composing && (
+      {composing && isStaff && (
         <ExerciseComposer
           onCreated={(created) => {
             setComposing(false);
@@ -518,7 +530,7 @@ export default function LibraryPage() {
         {items.map((it) => (
           <button
             key={it.id}
-            onClick={() => void openDetail(it.id)}
+            onClick={() => void openDetail(it.id, it.name)}
             className="group rounded-xl border border-edge bg-card p-3 text-left transition hover:border-accent"
           >
             <div className="flex h-32 items-center justify-center overflow-hidden rounded-lg bg-raise">
@@ -581,7 +593,15 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {detail && (
+      {sheet && !isStaff && (
+        <ExerciseSheet
+          exerciseId={sheet.id}
+          name={sheet.name}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
+      {detail && isStaff && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
           onClick={() => setDetail(null)}

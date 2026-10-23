@@ -8,6 +8,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, EPISODE_CLOSED_EVENT } from "@/lib/api/client";
+import ExerciseSheet from "@/components/ExerciseSheet";
+import IntakeDocuments from "@/components/IntakeDocuments";
 import { GoalCheck, type GoalRow } from "@/components/Goals";
 import PastCare from "@/components/PastCare";
 import PatientIntake from "@/components/PatientIntake";
@@ -117,7 +119,7 @@ type PlanData = {
   } | null;
   items: Item[];
   checkin: Checkin | null;
-  goals: { rows: GoalRow[]; promptDue: boolean } | null;
+  goals: { rows: GoalRow[]; promptDue: boolean; regions: string[] } | null;
   streak: StreakDay[];
   adhocToday: AdhocLog[];
   careOptions: CareOption[];
@@ -810,6 +812,9 @@ function currentStreakCount(streak: StreakDay[]): number {
 function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) {
   const dosage = dosageTypeOf(item);
   const [open, setOpen] = useState(false);
+  // The how-to sheet: instructions are a tap on the exercise itself, not
+  // something you only find by starting to log it.
+  const [howTo, setHowTo] = useState(false);
   // "" is a cleared field mid-typing — snapping a number back in made
   // backspace-then-type concatenate on the phone.
   const [sets, setSets] = useState<number | "">(item.logSetsDone ?? item.sets ?? 0);
@@ -867,7 +872,16 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
       }`}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-raise">
+        {/* The picture, the name and the "How to do it" link all open the
+            same sheet; the picture is a second tap target, not a second tab
+            stop. */}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden
+          onClick={() => setHowTo(true)}
+          className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-raise"
+        >
           {imageSrc(item.image) ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={imageSrc(item.image)!} alt="" className={imageFitClass(item.image)} />
@@ -876,10 +890,16 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
               🦵
             </span>
           )}
-        </div>
+        </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold">{item.name}</span>
+            <button
+              type="button"
+              onClick={() => setHowTo(true)}
+              className="text-left font-semibold hover:underline"
+            >
+              {item.name}
+            </button>
             {logged && (
               <span className="shrink-0 rounded-full bg-accent-deep px-2 py-0.5 text-xs font-medium text-white">
                 ✓ logged
@@ -888,8 +908,23 @@ function ExerciseCard({ item, onLogged }: { item: Item; onLogged: () => void }) 
           </div>
           <p className="text-sm text-muted">{dosageLine(item)}</p>
           {item.rationale && <p className="mt-1 text-sm text-muted">{item.rationale}</p>}
+          <button
+            type="button"
+            onClick={() => setHowTo(true)}
+            className="mt-1 text-sm font-medium text-accent-deep underline"
+          >
+            {item.kind === "modality" ? "How to use it" : "How to do it"}
+          </button>
         </div>
       </div>
+      {howTo && (
+        <ExerciseSheet
+          exerciseId={item.exerciseId}
+          name={item.name}
+          note={item.rationale}
+          onClose={() => setHowTo(false)}
+        />
+      )}
 
       {!open ? (
         <button
@@ -1109,6 +1144,15 @@ export default function PatientToday() {
         </div>
         <PastCare episodes={past} openNewest={!data.episode} />
         {!holdNewEpisode && <PatientIntake returning={past.length > 0} />}
+        {data.episode && (
+          <IntakeDocuments
+            key={data.episode.id}
+            episodeId={data.episode.id}
+            viewer="patient"
+            card
+            heading="Your doctor's plan & other files"
+          />
+        )}
         <EquipmentShelf equipment={data.equipment} onToggle={(id, o) => void toggleEquipment(id, o)} />
         {data.episode && <Journal notes={notes} onChanged={() => void load()} />}
         <CalendarSync />
@@ -1296,12 +1340,24 @@ export default function PatientToday() {
 
       {data.goals && (
         <GoalCheck
-          // Keyed on the newest rating date so a fresh save reseeds the
-          // sliders instead of holding stale local state.
-          key={data.goals.rows.map((g) => g.currentOn ?? g.baselineOn).join("|")}
+          // Keyed on each goal and its newest rating date, so a fresh save, a
+          // goal added or a goal removed reseeds the sliders instead of
+          // holding stale local state.
+          key={data.goals.rows.map((g) => `${g.activity}:${g.currentOn ?? g.baselineOn}`).join("|")}
           goals={data.goals.rows}
           promptDue={data.goals.promptDue}
+          regions={data.goals.regions}
           onChanged={() => void load()}
+        />
+      )}
+
+      {data.episode && (
+        <IntakeDocuments
+          key={data.episode.id}
+          episodeId={data.episode.id}
+          viewer="patient"
+          card
+          heading="Your doctor's plan & other files"
         />
       )}
 

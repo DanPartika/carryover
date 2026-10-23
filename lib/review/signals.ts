@@ -22,7 +22,8 @@ import {
   type StatLog,
 } from "@/lib/adherence/stats";
 import { APP_DAY, dayOf } from "@/lib/dates";
-import type { LimitedActivity } from "@/lib/intake/fields";
+import type { GoalSource } from "@/lib/goals/model";
+import { goalsForEpisodes } from "./goals";
 import {
   computeReviewSignal,
   reviewClockFrom,
@@ -38,10 +39,18 @@ export type EpisodeReview = ReviewSignal & {
   windowDays: number;
 };
 
-/** One intake goal beside where it stands now — the row a progress report is
- *  made of ("stairs: 4/10 at intake → 7/10 last week"). `current` is the
- *  newest re-rate, matched by activity text; null until someone re-rates. */
+/** One goal beside where it stands now — the row a progress report is made of
+ *  ("stairs: 4/10 at intake → 7/10 last week"). `current` is the newest
+ *  re-rate, matched by activity text; null until someone re-rates. The
+ *  baseline is the rating when the goal was NAMED: the intake for its first
+ *  few, the day it was added for the rest.
+ *
+ *  `id` and `source` are for the screens that list goals (retire a goal you
+ *  added, "added by the patient"); they are not part of a frozen snapshot. */
 export type GoalProgressRow = {
+  /** episode_goals.id for a goal added after the intake; null for the intake's. */
+  id?: string | null;
+  source?: GoalSource;
   activity: string;
   baseline: number;
   baselineOn: string;
@@ -78,7 +87,14 @@ export function reviewContext(r: EpisodeReviewFull | undefined): ReviewContext |
     painEnd: r.painEnd,
     painDirection: r.painDirection,
     triggers: r.codes,
-    goals: r.goals,
+    goals:
+      r.goals?.map((g) => ({
+        activity: g.activity,
+        baseline: g.baseline,
+        baselineOn: g.baselineOn,
+        current: g.current,
+        currentOn: g.currentOn,
+      })) ?? null,
   };
 }
 
@@ -156,68 +172,9 @@ export async function reviewSignals(
     else visitsByEpisode.set(v.episodeId, [v.on]);
   }
 
-  // The goals: the newest intake that carries limited_activities is the
-  // baseline; the newest goal_ratings row is where they stand. Matched by
-  // activity TEXT, not index — a superseding intake that reorders its three
-  // activities must not silently shift the comparison.
-  const { rows: goalBase } = await pool.query<{
-    episodeId: string;
-    activities: LimitedActivity[];
-    on: string;
-  }>(
-    `SELECT DISTINCT ON (episode_id) episode_id AS "episodeId",
-            limited_activities AS activities, ${dayOf("created_at")}::text AS "on"
-     FROM intakes
-     WHERE episode_id = ANY($1::uuid[]) AND limited_activities IS NOT NULL
-     ORDER BY episode_id, created_at DESC`,
-    [episodeIds],
-  );
-  // Every re-rate row, newest first. A PT can rate ONE goal in the room, so
-  // "where does this goal stand" is the newest row that actually contains it —
-  // reading only the newest row reported the other two as never re-rated.
-  const { rows: goalLatest } = await pool.query<{
-    episodeId: string;
-    ratings: LimitedActivity[];
-    on: string;
-  }>(
-    `SELECT episode_id AS "episodeId", ratings, ${dayOf("created_at")}::text AS "on"
-     FROM goal_ratings WHERE episode_id = ANY($1::uuid[])
-     ORDER BY created_at DESC`,
-    [episodeIds],
-  );
-  const ratingRows = new Map<string, { ratings: LimitedActivity[]; on: string }[]>();
-  for (const g of goalLatest) {
-    const list = ratingRows.get(g.episodeId);
-    if (list) list.push(g);
-    else ratingRows.set(g.episodeId, [g]);
-  }
-  const goalsByEpisode = new Map<string, GoalProgressRow[]>();
-  for (const base of goalBase) {
-    const rows = ratingRows.get(base.episodeId) ?? [];
-    const key = (s: string) => s.trim().toLowerCase();
-    goalsByEpisode.set(
-      base.episodeId,
-      base.activities.map((a) => {
-        let current: number | null = null;
-        let currentOn: string | null = null;
-        for (const row of rows) {
-          const match = row.ratings.find((r) => key(r.activity) === key(a.activity));
-          if (match) {
-            current = match.rating;
-            currentOn = row.on;
-            break;
-          }
-        }
-        return {
-          activity: a.activity,
-          baseline: a.rating,
-          baselineOn: base.on,
-          current,
-          currentOn,
-        };
-      }),
-    );
-  }
+  // The goals: the intake's activities plus any added since, each beside its
+  // newest re-rate (lib/review/goals).
+  const goalsByEpisode = await goalsForEpisodes(pool, episodeIds);
 
   // Episodes with no active plan still get a row: a raised hand on a patient
   // between plans is exactly when a PT most needs to hear it.

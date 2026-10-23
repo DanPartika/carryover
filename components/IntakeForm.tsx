@@ -7,11 +7,15 @@
 // the same questions and can never drift apart.
 
 import { useState } from "react";
+import { apiFetch } from "@/lib/api/client";
+import OrdersReader, { type OrdersContext, type OrdersUpdate } from "@/components/OrdersReader";
+import { starterIdeas } from "@/lib/goals/ideas";
 import {
   CONDITION_OPTIONS,
   MAX_LIMITED_ACTIVITIES,
   ONSET_KIND_OPTIONS,
   PAIN_PATTERN_OPTIONS,
+  PROVIDER_PLAN_MAX,
   RED_FLAG_OPTIONS,
   REGION_OPTIONS,
   SIDE_OPTIONS,
@@ -121,6 +125,104 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** "Not sure what to list?" — a tray of everyday activities to start from. A
+ *  patient gets a fixed list chosen by the regions they ticked; a PT can also
+ *  ask for ideas drafted from what they've entered so far. Tapping one fills the
+ *  next empty row — the person still rates it and can reword it. */
+function GoalIdeas({
+  regions,
+  taken,
+  full,
+  clinicId,
+  context,
+  onPick,
+}: {
+  regions: string[];
+  taken: string[];
+  full: boolean;
+  /** Set only for the PT persona: the AI never writes to a patient directly. */
+  clinicId?: string;
+  context: {
+    condition: string;
+    side: string | null;
+    bodyRegions: string[];
+    restrictions: string;
+    assistiveDevice: string;
+  };
+  onPick: (idea: string) => void;
+}) {
+  const [drafted, setDrafted] = useState<string[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  async function suggest() {
+    setAsking(true);
+    setNote(null);
+    try {
+      const res = await apiFetch("/api/goals/ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicId, ...context, existing: taken.filter((t) => t.trim()) }),
+      });
+      if (!res.ok) {
+        setNote("couldn't get ideas just now — the standard ones are still here");
+        return;
+      }
+      const d = (await res.json()) as { ideas: string[]; mode: "fixture" | "lithe"; fellBack: boolean };
+      setDrafted(d.ideas);
+      setNote(
+        d.fellBack
+          ? "The AI wasn't available, so these are the standard ideas."
+          : d.mode === "lithe"
+            ? "Drafted from what you've entered so far — pick what fits."
+            : "Standard ideas for this kind of problem.",
+      );
+    } catch {
+      setNote("network error — the standard ideas are still here");
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  const ideas = drafted ?? starterIdeas(regions, taken);
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-xs text-muted">
+          {full
+            ? "All three are filled — you can add more goals later, whenever they come to mind."
+            : "Not sure what to list? Tap an idea to start from."}
+        </span>
+        {clinicId && (
+          <button
+            type="button"
+            onClick={() => void suggest()}
+            disabled={asking}
+            className="text-xs font-medium text-accent-deep underline disabled:opacity-40"
+          >
+            {asking ? "Thinking…" : "Suggest some from this intake"}
+          </button>
+        )}
+      </div>
+      {note && <p className="mt-0.5 text-xs text-muted">{note}</p>}
+      {!full && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {ideas.map((idea) => (
+            <button
+              key={idea}
+              type="button"
+              onClick={() => onPick(idea)}
+              className="rounded-full border border-edge px-2.5 py-1 text-xs text-muted hover:bg-raise"
+            >
+              {idea}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function IntakeForm({
   persona,
   initial,
@@ -129,6 +231,7 @@ export default function IntakeForm({
   submitLabel,
   onSubmit,
   onCancel,
+  ptContext,
 }: {
   persona: "pt" | "patient";
   initial: IntakeRecord | null;
@@ -137,6 +240,9 @@ export default function IntakeForm({
   submitLabel: string;
   onSubmit: (payload: IntakePayload) => void;
   onCancel: () => void;
+  /** PT persona only: who and where, which lets the form offer AI-drafted goal
+   *  ideas and read a doctor's referral for this patient. */
+  ptContext?: OrdersContext;
 }) {
   const pt = persona === "pt";
 
@@ -182,6 +288,7 @@ export default function IntakeForm({
 
   const [restrictions, setRestrictions] = useState(initial?.restrictions ?? "");
   const [narrative, setNarrative] = useState(initial?.narrative ?? "");
+  const [providerPlan, setProviderPlan] = useState(initial?.providerPlan ?? "");
 
   function payload(): IntakePayload {
     return {
@@ -217,11 +324,29 @@ export default function IntakeForm({
       activityLevel,
       ...(pt ? { restrictions } : {}),
       narrative,
+      providerPlan,
     };
   }
 
   function setActivity(i: number, patch: Partial<{ activity: string; rating: string }>) {
     setActivities((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  }
+
+  function applyOrders(u: OrdersUpdate) {
+    if (u.condition !== undefined) setCondition(u.condition);
+    if (u.side !== undefined) setSide(u.side);
+    if (u.bodyRegions !== undefined) setRegions(u.bodyRegions);
+    if (u.onsetDate !== undefined) setOnsetDate(u.onsetDate);
+    if (u.surgeries !== undefined) setSurgeries(u.surgeries);
+    if (u.restrictions !== undefined) setRestrictions(u.restrictions);
+    if (u.providerPlan !== undefined) setProviderPlan(u.providerPlan);
+  }
+
+  function fillNextActivity(idea: string) {
+    setActivities((prev) => {
+      const i = prev.findIndex((a) => !a.activity.trim());
+      return i === -1 ? prev : prev.map((a, idx) => (idx === i ? { ...a, activity: idea } : a));
+    });
   }
 
   const yesNo = (v: boolean | null, set: (b: boolean | null) => void) => (
@@ -368,10 +493,21 @@ export default function IntakeForm({
                   className={numCls}
                 />
                 <span className="text-xs text-muted">/10</span>
+                {a.activity.trim() !== "" && a.rating === "" && (
+                  <span className="text-xs text-flag">rate it 0-10 to keep it</span>
+                )}
               </div>
             ))}
           </div>
         </Field>
+        <GoalIdeas
+          regions={regions}
+          taken={activities.map((a) => a.activity)}
+          full={activities.every((a) => a.activity.trim() !== "")}
+          clinicId={pt ? ptContext?.clinicId : undefined}
+          context={{ condition, side, bodyRegions: regions, restrictions, assistiveDevice }}
+          onPick={fillNextActivity}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={pt ? "Assistive device" : "Using a cane, brace, or walker?"}>
             <input
@@ -390,6 +526,36 @@ export default function IntakeForm({
             />
           </Field>
         </div>
+      </Section>
+
+      <Section title={pt ? "Doctor's plan or protocol" : "Your doctor's plan"}>
+        {pt && ptContext && (
+          <OrdersReader
+            ctx={ptContext}
+            current={{ condition, side, regions, onsetDate, surgeries, restrictions, providerPlan }}
+            onApply={applyOrders}
+          />
+        )}
+        <Field
+          label={
+            pt
+              ? "Paste the referring provider's plan, orders or protocol as written. The AI draft treats it as limits to stay inside — patient identifiers are removed before it is read — and your own restrictions still apply."
+              : "Did your doctor or surgeon give you a plan, protocol or orders? Paste the text here and your PT will build your program around it. Have it on paper or as a PDF? You can attach that right after you send this."
+          }
+        >
+          <textarea
+            value={providerPlan}
+            onChange={(e) => setProviderPlan(e.target.value)}
+            rows={5}
+            maxLength={PROVIDER_PLAN_MAX}
+            placeholder={
+              pt
+                ? "e.g. weight-bearing status, range-of-motion limits, protocol and phase, visit frequency…"
+                : "e.g. the referral or protocol text your doctor gave you"
+            }
+            className={inputCls}
+          />
+        </Field>
       </Section>
 
       <Section title={pt ? "History" : "Your health background"}>

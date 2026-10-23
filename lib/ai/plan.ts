@@ -59,6 +59,13 @@ export type IntakeForPrompt = {
   /** From users.birth_year, computed by the caller — dosage for a 19-year-old
    *  and an 80-year-old are different questions. */
   age?: number | null;
+  /** The referring provider's plan, as pasted — ALREADY redacted by the caller
+   *  (patient name parts and identifiers out). Orders to stay inside, not a
+   *  suggestion; see PROVIDER_PLAN_RULES. */
+  provider_plan?: string | null;
+  /** Today's clinic date, yyyy-mm-dd — a protocol's phases run from the surgery
+   *  date, and the model has no clock. Only rendered beside a provider plan. */
+  today?: string | null;
 };
 
 export type DraftItem = {
@@ -510,6 +517,32 @@ export function historyEchoes(texts: string[]): string[] {
   return texts.filter((t) => HISTORY_ECHO_RE.test(t));
 }
 
+/** Appended to the system prompt only when the intake carries a provider's plan.
+ *  Orders LIMIT a draft; they never raise it. The model is told to choose the
+ *  earlier, more restricted reading whenever the phase is unclear, and to show
+ *  its working on the PT-only channel so the PT can check it against the page. */
+export const PROVIDER_PLAN_RULES = `
+- A REFERRING PROVIDER'S PLAN is included: the doctor's own orders, pasted as written. Treat them as LIMITS you must stay inside, not suggestions. Never include an exercise, load, range, or activity the orders prohibit, restrict, or defer — weight-bearing status, range-of-motion limits, load limits, precautions, and anything gated to a later phase or date.
+- If the orders define phases, pathways, or time-gated stages, draft only for the phase that TODAY'S date and the surgery/onset date indicate. If you cannot tell which phase applies, choose the earlier, more restricted one. The orders cap what you may include; they do not tell you how much to prescribe — dosage still follows the intake.
+- Orders can conflict with the library or with the intake (for example a restriction the intake does not mention). The orders win. If something in the library would have been a good fit but the orders rule it out, leave it out.
+- If the orders NAME a protocol or pathway but do not spell out its steps, do not fill them in from memory. Follow only what is written, stay conservative, and say in pt_note that the protocol was named but its steps were not provided.
+- If the orders disagree with each other — for example a stated weight-bearing status and a pathway's rule for the same period — follow the MORE restrictive one and flag the disagreement in pt_note. Never pick the looser reading.
+- Say in pt_note (PT-only) which phase you assumed and which orders shaped the draft, and flag anything in the orders you could not place or that looks inconsistent with the intake, so the PT can verify it against the page.
+- Rationales are read by the patient: never quote the orders or any staff notes in them. A rationale may say in plain words that an exercise suits the current stage of recovery.`;
+
+/** The PROVIDER'S PLAN block. Empty string when there is none, so a prompt
+ *  without one is byte-for-byte what it was before this existed. */
+export function formatProviderPlan(intake: IntakeForPrompt): string {
+  const text = intake.provider_plan?.trim();
+  if (!text) return "";
+  const lines = [
+    "REFERRING PROVIDER'S PLAN (the doctor's own orders, pasted as written; patient identifiers removed)",
+  ];
+  if (intake.today) lines.push(`Today is ${intake.today}.`);
+  lines.push(text);
+  return lines.join("\n");
+}
+
 function progressSection(progress: ProgressContext): string {
   const lines: string[] = [];
   lines.push(`PROGRESS SO FAR (${progress.daysOnPlan} days on the current plan)`);
@@ -627,9 +660,10 @@ export function buildDraftUserMessage(args: {
     )
     .join("\n");
   const priorCare = progress ? "" : formatHistory(args.history);
+  const orders = formatProviderPlan(intake);
 
   return `${progress ? `${progressSection(progress)}\n\n` : ""}${formatIntake(intake)}
-${priorCare ? `\n${priorCare}\n` : ""}
+${orders ? `\n${orders}\n` : ""}${priorCare ? `\n${priorCare}\n` : ""}
 PATIENT HOME EQUIPMENT: ${equipmentNames.join(", ") || "none recorded"} (plus assumed household: wall, chair, towel, a step)
 
 EQUIPMENT CATALOG (slug | name) — for equipment_suggestions only:
@@ -643,9 +677,39 @@ ${progress ? "Propose the REVISED plan via the propose_plan tool." : "Propose th
 
 /** The system prompt a draft runs under. History rules attach to a FIRST draft
  *  that has prior care to read, and to nothing else. */
-export function draftSystemPrompt(progress?: ProgressContext, history?: PriorCare[]): string {
-  if (progress) return REVAMP_SYSTEM_PROMPT;
-  return formatHistory(history) ? `${SYSTEM_PROMPT}${HISTORY_RULES}` : SYSTEM_PROMPT;
+export function draftSystemPrompt(
+  progress?: ProgressContext,
+  history?: PriorCare[],
+  providerPlan = false,
+): string {
+  const base = progress
+    ? REVAMP_SYSTEM_PROMPT
+    : formatHistory(history)
+      ? `${SYSTEM_PROMPT}${HISTORY_RULES}`
+      : SYSTEM_PROMPT;
+  // Orders bind a revamp as much as a first draft.
+  return providerPlan ? `${base}${PROVIDER_PLAN_RULES}` : base;
+}
+
+/** The plan tool, with pt_note told where its working goes. The default tool is
+ *  returned untouched when neither prior care nor orders are in play. */
+function planToolFor(withHistory: boolean, withOrders: boolean) {
+  const base = withHistory ? PLAN_TOOL_WITH_HISTORY : PLAN_TOOL;
+  if (!withOrders) return base;
+  const note = base.input_schema.properties.pt_note;
+  return {
+    ...base,
+    input_schema: {
+      ...base.input_schema,
+      properties: {
+        ...base.input_schema.properties,
+        pt_note: {
+          ...note,
+          description: `${note.description} When a REFERRING PROVIDER'S PLAN shaped the draft, say which phase you assumed and which orders you followed, and flag anything you could not place.`,
+        },
+      },
+    },
+  };
 }
 
 async function litheDraft(
@@ -673,9 +737,9 @@ async function litheDraft(
     model,
     // Headroom over the tool JSON — adaptive thinking shares this budget.
     max_tokens: 8192,
-    system: draftSystemPrompt(progress, history),
+    system: draftSystemPrompt(progress, history, !!formatProviderPlan(intake)),
     messages: [{ role: "user", content: user }],
-    tools: [!progress && formatHistory(history) ? PLAN_TOOL_WITH_HISTORY : PLAN_TOOL],
+    tools: [planToolFor(!progress && !!formatHistory(history), !!formatProviderPlan(intake))],
     tool_choice: { type: "tool", name: "propose_plan" },
   });
 
@@ -783,6 +847,13 @@ export async function draftPlan(args: {
       const warn = `Heads-up: ${echoed.length === 1 ? "a rationale or suggestion mentions" : `${echoed.length} rationales or suggestions mention`} earlier care ("last time", "previously"…). The patient will read it — reword before approving.`;
       aiNote = aiNote ? `${aiNote} ${warn}` : warn;
     }
+  }
+  // A deterministic reminder, whatever the mode and whatever the model said: a
+  // draft is built FROM the library, and only the PT can check it against the
+  // doctor's actual page before approving.
+  if (formatProviderPlan(intake)) {
+    const remind = "A doctor's plan is on file — check this draft against it before approving.";
+    aiNote = aiNote ? `${aiNote} ${remind}` : remind;
   }
   return { items, mode, model, droppedItems: dropped, equipmentSuggestions, aiNote };
 }

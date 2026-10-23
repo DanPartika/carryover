@@ -102,17 +102,26 @@ export async function GET(req: NextRequest) {
   // The intake's rated activities, and whether it's been long enough since
   // the last rating to nudge for a fresh one. The re-rate is what turns the
   // PT's next check-in into a real progress report — number beside number.
-  let goals: { rows: unknown; promptDue: boolean } | null = null;
+  // The card exists even with no goals yet: "add something you want back" is
+  // the whole point of it for someone whose intake named none. `regions` feeds
+  // the fixed starter ideas next to the add box.
+  let goals: { rows: unknown; promptDue: boolean; regions: string[] } | null = null;
   if (episode) {
-    const rows = await goalRows(pool, episode.id);
-    if (rows) {
-      const last = rows.reduce(
-        (max, r) => ((r.currentOn ?? r.baselineOn) > max ? (r.currentOn ?? r.baselineOn) : max),
-        rows[0].baselineOn,
-      );
-      const elapsed = Math.floor((Date.now() - Date.parse(last)) / 86_400_000);
-      goals = { rows, promptDue: elapsed >= GOAL_PROMPT_DAYS };
-    }
+    const rows = (await goalRows(pool, episode.id)) ?? [];
+    // Stale PER GOAL: a goal added today must not reset the nudge for the ones
+    // rated a month ago.
+    const nudge = rows.some(
+      (r) =>
+        Math.floor((Date.now() - Date.parse(r.currentOn ?? r.baselineOn)) / 86_400_000) >=
+        GOAL_PROMPT_DAYS,
+    );
+    const {
+      rows: [intake],
+    } = await pool.query<{ body_regions: string[] | null }>(
+      `SELECT body_regions FROM intakes WHERE episode_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [episode.id],
+    );
+    goals = { rows, promptDue: nudge, regions: intake?.body_regions ?? [] };
   }
 
   // The strip's days come from the same clinic-day clock the logs are stamped

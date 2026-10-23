@@ -101,6 +101,10 @@ export type LimitedActivity = { activity: string; rating: number };
 
 export const MAX_LIMITED_ACTIVITIES = 3;
 
+/** The referring provider's plan, pasted as written. Long on purpose: a surgeon's
+ *  protocol runs to pages, and a truncated one is worse than none. */
+export const PROVIDER_PLAN_MAX = 20000;
+
 export function parseLimitedActivities(v: unknown): LimitedActivity[] | null {
   if (!Array.isArray(v)) return null;
   const out: LimitedActivity[] = [];
@@ -178,6 +182,7 @@ export function parseIntakeFields(body: Record<string, unknown>) {
     activityLevel: textOrNull(body.activityLevel, 500),
     goals: textOrNull(body.goals),
     restrictions: textOrNull(body.restrictions),
+    providerPlan: textOrNull(body.providerPlan, PROVIDER_PLAN_MAX),
     narrative: textOrNull(body.narrative),
     birthYear: intOrNull(body.birthYear, 1900, 2100),
   };
@@ -192,9 +197,9 @@ export const INTAKE_INSERT_SQL = `
      pain_now, pain_worst, pain_avg, pain_pattern, aggravators, easers,
      night_pain, worst_time, limited_activities, assistive_device,
      conditions, red_flags, medications, surgeries, imaging, prior_treatment,
-     occupation, activity_level, goals, restrictions, narrative)
+     occupation, activity_level, goals, restrictions, narrative, provider_plan)
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-          $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+          $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
   RETURNING id`;
 
 export function intakeInsertValues(
@@ -236,6 +241,7 @@ export function intakeInsertValues(
     f.goals,
     opts.restrictions !== undefined ? opts.restrictions : f.restrictions,
     f.narrative,
+    f.providerPlan,
   ];
 }
 
@@ -271,6 +277,8 @@ export type IntakeRecord = {
   activityLevel: string | null;
   goals: string | null;
   restrictions: string | null;
+  /** The referring provider's plan, as pasted. The AI draft reads it (redacted). */
+  providerPlan: string | null;
   narrative: string | null;
   createdAt: string;
 };
@@ -288,4 +296,5 @@ export const INTAKE_SELECT_COLS = `
   i.conditions, i.red_flags AS "redFlags", i.medications, i.surgeries,
   i.imaging, i.prior_treatment AS "priorTreatment",
   i.occupation, i.activity_level AS "activityLevel",
-  i.goals, i.restrictions, i.narrative, i.created_at AS "createdAt"`;
+  i.goals, i.restrictions, i.provider_plan AS "providerPlan", i.narrative,
+  i.created_at AS "createdAt"`;

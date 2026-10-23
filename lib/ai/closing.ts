@@ -99,15 +99,57 @@ function longDay(iso: string): string {
  *  can't catch a nickname — but a PT's check-in note is often written TO the
  *  patient by first name, and that name has no business leaving the building. */
 export function scrubNames(text: string, names: string[]): string {
-  let out = text;
+  // The parts of every name: "Jean-Luc Picard" → jean, luc, picard; an email
+  // local part like "jo.o_silva" → jo, o, silva. Compared with accents and case
+  // folded away, so "José" in the record matches "JOSE" or "Jose" in the text.
+  const keys = new Set<string>();
   for (const raw of names) {
-    const n = raw.trim();
-    if (n.length < 3) continue;
-    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out.replace(new RegExp(`\\b${esc}\\b`, "gi"), "the patient");
+    for (const part of raw.split(/[\s._+-]+/u)) {
+      const k = foldName(part);
+      if (k.length >= 3) keys.add(k);
+    }
   }
-  return out;
+  if (keys.size === 0) return text;
+
+  // Match word by word (letters, accents and an inner apostrophe) rather than
+  // with \b, which treats an accented letter as a word edge: \bJosé\b fails, and
+  // \bRené\b skips "Renée".
+  return text.replace(NAME_TOKEN, (token) => {
+    // "O'Brien" is one name; "Dan's" is Dan, possessive.
+    let k = foldName(token);
+    let possessive = false;
+    if (!keys.has(k)) {
+      const poss = /^(.+?)['’]s$/iu.exec(token);
+      if (!poss) return token;
+      k = foldName(poss[1]);
+      possessive = true;
+      if (!keys.has(k)) return token;
+    }
+    // A name that is also an ordinary word ("Will", "Mark", "Rose") is only
+    // replaced when capitalised, so a clinical "will" or "mark" is left alone.
+    if (COMMON_WORD_NAMES.has(k) && !/^\p{Lu}/u.test(token)) return token;
+    return possessive ? "the patient's" : "the patient";
+  });
 }
+
+const NAME_TOKEN = /[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)*/gu;
+
+const foldName = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/['’]/g, "")
+    .toLowerCase();
+
+/** First names that are also everyday words. */
+const COMMON_WORD_NAMES = new Set([
+  "will", "mark", "rose", "hope", "grace", "may", "bill", "pat", "art", "gene", "joy", "faith",
+  "dawn", "summer", "amber", "ivy", "iris", "rob", "don", "ray", "jay", "cash", "chase", "dean",
+  "earl", "frank", "grant", "guy", "hunter", "miles", "page", "penny", "rich", "sunny", "wade",
+  "bob", "jack", "sue", "ken", "dale", "bud", "king", "lane", "mason", "drew", "rusty", "skip",
+  "bay", "case", "cliff", "dusty", "flint", "ford", "heath", "hunt", "lance", "lee", "pearl",
+  "river", "sky", "sage", "wren", "bell", "bishop", "brook", "cook", "fox", "hall", "hill",
+]);
 
 function planLines(snap: PlanSnapshot): string[] {
   return snap.items.map((i) => `  - ${i.name}: ${i.line}, ${i.location}`);

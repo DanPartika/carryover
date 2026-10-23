@@ -26,7 +26,9 @@ import { APP_DAY, dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
 import { dosageLine } from "@/lib/dosage";
 import { closedEpisodeResponse, lockOpenEpisode } from "@/lib/episodes/guard";
+import { redactIdentifiers } from "@/lib/intake/redact";
 import { requestLabel, type CheckinRequest } from "@/lib/review/due";
+import { goalRows } from "@/lib/review/goals";
 import { progressionCandidates } from "@/lib/review/progressions";
 import { REVIEW_WINDOW_DAYS } from "@/lib/review/signals";
 
@@ -80,7 +82,9 @@ export async function POST(req: NextRequest) {
     // never told which it had.
     const {
       rows: [intake],
-    } = await pool.query<IntakeForPrompt & { id: string }>(
+    } = await pool.query<
+      IntakeForPrompt & { id: string; patientName: string | null; patientEmail: string | null }
+    >(
       `SELECT i.id, i.condition, i.body_regions, i.onset_date::text AS onset_date,
               i.pain_now, i.pain_worst, i.goals, i.restrictions, i.narrative,
               i.side, i.onset_kind, i.trajectory, i.had_before, i.mechanism,
@@ -88,6 +92,8 @@ export async function POST(req: NextRequest) {
               i.night_pain, i.worst_time, i.limited_activities, i.assistive_device,
               i.conditions, i.red_flags, i.medications, i.surgeries,
               i.imaging, i.prior_treatment, i.occupation, i.activity_level,
+              i.provider_plan, ${APP_DAY}::text AS today,
+              u.display_name AS "patientName", u.email AS "patientEmail",
               EXTRACT(YEAR FROM ${APP_DAY})::int - u.birth_year AS age
        FROM intakes i
        JOIN episodes ep ON ep.id = i.episode_id
@@ -209,6 +215,38 @@ export async function POST(req: NextRequest) {
 
     if (!promptIntake) {
       return NextResponse.json({ error: "nothing to draft from" }, { status: 400 });
+    }
+
+    // The doctor's plan reaches the model only with the patient's name parts and
+    // identifiers (record numbers, birth date, phone, email) taken out, and the
+    // name and email themselves never ride along in the intake object. Files
+    // attached to the episode are never read — a scan can't be de-identified.
+    if (intake) {
+      const { patientName, patientEmail, provider_plan, today, ...rest } = intake;
+      const names = [
+        ...(patientName ?? "").split(/\s+/),
+        (patientEmail ?? "").split("@")[0],
+      ].filter(Boolean);
+      promptIntake = {
+        ...rest,
+        ...(provider_plan?.trim()
+          ? { provider_plan: redactIdentifiers(scrubNames(provider_plan, names)), today }
+          : {}),
+      };
+    }
+
+    // The goals as they stand today: the intake's activities plus any named
+    // since, each at its newest rating. The intake column alone would leave out
+    // every goal added later, and show the model day-one numbers on a revamp.
+    const liveGoals = await goalRows(pool, episode.id);
+    if (liveGoals) {
+      promptIntake = {
+        ...promptIntake,
+        limited_activities: liveGoals.map((g) => ({
+          activity: g.activity,
+          rating: g.current ?? g.baseline,
+        })),
+      };
     }
 
     // Earlier CLOSED episodes with THIS clinic (never another's), reduced to the
