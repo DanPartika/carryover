@@ -17,6 +17,8 @@ type Body = {
   intensity?: string | null;
   pain?: number | null;
   note?: string | null;
+  /** Show this note to the patient. Off unless the PT turns it on. */
+  noteShared?: boolean;
 };
 
 function clampOrNull(v: unknown, lo: number, hi: number): number | null {
@@ -59,15 +61,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   } = await pool.query(
     `INSERT INTO visit_items
        (visit_id, exercise_id, plan_item_id, sets, reps, hold_secs,
-        duration_mins, intensity, pain, note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        duration_mins, intensity, pain, note, note_shared)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (visit_id, exercise_id) DO UPDATE SET
        plan_item_id = EXCLUDED.plan_item_id, sets = EXCLUDED.sets, reps = EXCLUDED.reps,
        hold_secs = EXCLUDED.hold_secs, duration_mins = EXCLUDED.duration_mins,
-       intensity = EXCLUDED.intensity, pain = EXCLUDED.pain, note = EXCLUDED.note
+       intensity = EXCLUDED.intensity, pain = EXCLUDED.pain, note = EXCLUDED.note,
+       note_shared = EXCLUDED.note_shared
      RETURNING id, exercise_id AS "exerciseId", plan_item_id AS "planItemId",
                sets, reps, hold_secs AS "holdSecs",
-               duration_mins AS "durationMins", intensity, pain, note`,
+               duration_mins AS "durationMins", intensity, pain, note,
+               note_shared AS "noteShared"`,
     [
       id,
       body.exerciseId,
@@ -79,6 +83,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       body.intensity?.trim().slice(0, 80) || null,
       clampOrNull(body.pain, 0, 10),
       body.note?.trim().slice(0, 500) || null,
+      // Shared means a note exists AND the PT said so; anything else is private.
+      body.noteShared === true && !!body.note?.trim(),
     ],
   );
   return NextResponse.json({ item });

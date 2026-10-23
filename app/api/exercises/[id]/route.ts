@@ -54,6 +54,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
        AND (p.clinic_id IS NULL OR p.clinic_id = ANY($2))
        AND ${visibleToViewerSql("$2", "x")}
      ORDER BY x.name`;
+  // The charted ladder and its notes are the clinic's judgment about WHEN to
+  // step someone along (the PT decides that, never the patient). A patient —
+  // anyone with no PT or admin standing — gets the exercise itself and nothing
+  // of the ladder, whatever the UI chooses to show.
+  const {
+    rows: [standing],
+  } = await pool.query<{ staff: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM clinic_members WHERE user_id = $1 AND active AND role IN ('pt', 'admin'))
+       OR COALESCE((SELECT is_app_admin FROM users WHERE id = $1), false)
+     ) AS staff`,
+    [user.id],
+  );
+  if (!standing?.staff) {
+    delete exercise.clinicName;
+    exercise.canEdit = false;
+    return NextResponse.json({ exercise, equipment, progressions: { easier: [], harder: [] } });
+  }
+
   const { rows: harder } = await pool.query(neighborSql("to_exercise_id", "from_exercise_id"), [
     id,
     clinics,

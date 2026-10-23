@@ -37,6 +37,8 @@ type VisitItem = {
   intensity: string | null;
   pain: number | null;
   note: string | null;
+  /** The patient can read this note. Off by default. */
+  noteShared: boolean;
 };
 
 type Visit = {
@@ -309,6 +311,7 @@ export default function VisitMode({
                             intensity: p.intensity,
                             pain: null,
                             note: null,
+                            noteShared: false,
                           })
                     }
                     className="flex w-full items-center gap-3 text-left"
@@ -412,6 +415,7 @@ export default function VisitMode({
                           intensity: null,
                           pain: null,
                           note: null,
+                          noteShared: false,
                         });
                         setSearch("");
                         setHits([]);
@@ -520,7 +524,8 @@ function ItemDetail({
       draft.reps !== item.reps ||
       draft.durationMins !== item.durationMins ||
       draft.pain !== item.pain ||
-      draft.note !== item.note
+      draft.note !== item.note ||
+      draft.noteShared !== item.noteShared
     ) {
       onChange(draft);
     }
@@ -587,6 +592,20 @@ function ItemDetail({
         placeholder="Note — how it went, cues that worked, what to try next time"
         className="w-full rounded-md border border-edge bg-card px-2 py-1.5 outline-none focus:border-accent"
       />
+      {/* Private unless ticked: this is a working note, and the patient's
+          In-office tab shows only the ones the PT chooses to share. */}
+      <label className="flex w-full items-center gap-2">
+        <input
+          type="checkbox"
+          checked={draft.noteShared && !!draft.note?.trim()}
+          disabled={!draft.note?.trim()}
+          onChange={(e) => setDraft({ ...draft, noteShared: e.target.checked })}
+        />
+        <span>
+          Share this note with the patient{" "}
+          <span className="opacity-70">(private unless ticked)</span>
+        </span>
+      </label>
     </div>
   );
 }

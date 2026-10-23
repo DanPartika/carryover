@@ -280,7 +280,12 @@ export function fixtureClosing(input: ClosingInput): string {
 // "progress" is matched as a word on its own — "progression chain" is a plain
 // fact about the plan and is allowed.
 const VERDICT_RE =
-  /\b(improv\w*|better|worse|worsen\w*|progress(?:ed|ing)?|recover\w*|great|excellent|proud|success\w*|ready|plateau\w*|because|thanks to|which shows|going forward|keep (?:it )?up|next steps?|congrat\w*|well done|impressive|remarkabl\w*|only \d+)\b/i;
+  /\b(improv\w*|better|worse|worsen\w*|progress(?:ed|ing)?|recover\w*|great|excellent|proud|success\w*|ready|plateau\w*|because|thanks to|which shows|going forward|keep (?:it )?up|next steps?|congrat\w*|well done|impressive|remarkabl\w*|only \d+|met|reach(?:ed|ing)|achiev\w*|heal(?:ed|ing)?|cured?|resolved|stronger|strongest|gain(?:s|ed)?|normal|should|can now|went away|on track|doing well|bounced back|mastered)\b/i;
+
+// A count written out in words ("three visits", "a couple of weeks") sails past
+// the digit check below, because the record states it as a number.
+const SPELLED_COUNT_RE =
+  /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|several|a few|a couple of)[\s-]+(?:day|week|month|year|visit|session|exercise|goal)s?\b/i;
 
 const PREAMBLE_RE = /^\s*(here(?:'s| is)|sure|certainly|of course|below is)\b/i;
 
@@ -318,6 +323,9 @@ export function screenDraft(text: string, facts: string): string[] {
   if (converted.length > 0) {
     out.push(`restates the record in ${converted.join("/")}s — it only gives days`);
   }
+
+  const spelled = text.match(SPELLED_COUNT_RE);
+  if (spelled) out.push(`states a count in words ("${spelled[0]}") — use the number as the record gives it`);
 
   const allowed = new Set(facts.match(/\d+/g) ?? []);
   const invented = [...new Set(text.match(/\d+/g) ?? [])].filter((n) => !allowed.has(n));

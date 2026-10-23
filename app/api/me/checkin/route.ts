@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
 import { dayOf } from "@/lib/dates";
 import { getPool } from "@/lib/db/pool";
+import { closedEpisodeResponse, isEpisodeClosedError } from "@/lib/episodes/guard";
 
 const KINDS = ["too_easy", "too_hard", "something_changed"];
 
@@ -46,16 +47,24 @@ export async function POST(req: NextRequest) {
   // Raising a hand twice is the same hand, not a queue — the second press
   // updates the open row. ON CONFLICT names the partial index's predicate,
   // which Postgres requires to infer it.
-  const {
-    rows: [row],
-  } = await pool.query<{ id: string; kind: string; note: string | null; on: string }>(
+  let row: { id: string; kind: string; note: string | null; on: string };
+  try {
+    ({
+      rows: [row],
+    } = await pool.query<{ id: string; kind: string; note: string | null; on: string }>(
     `INSERT INTO checkin_requests (episode_id, patient_user_id, kind, note)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (episode_id) WHERE resolved_at IS NULL
      DO UPDATE SET kind = EXCLUDED.kind, note = EXCLUDED.note, created_at = now()
      RETURNING id, kind, note, ${dayOf("created_at")}::text AS "on"`,
     [episodeId, user.id, body.kind, body.note?.trim().slice(0, 500) || null],
-  );
+    ));
+  } catch (err) {
+    // The episode was closed between the lookup above and this write; the
+    // database trigger refused it. Same answer every other route gives.
+    if (isEpisodeClosedError(err)) return closedEpisodeResponse();
+    throw err;
+  }
   return NextResponse.json({ checkin: row }, { status: 201 });
 }
 

@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
     `SELECT vi.visit_id AS "visitId", e.name, (e.images ->> 0) AS image,
             e.dosage_type AS "dosageType",
             vi.sets, vi.reps, vi.hold_secs AS "holdSecs",
-            vi.duration_mins AS "durationMins", vi.intensity, vi.pain, vi.note,
+            vi.duration_mins AS "durationMins", vi.intensity, vi.pain,
+            -- A PT's working note reaches the patient only when the PT shared it.
+            CASE WHEN vi.note_shared THEN vi.note END AS note,
             (vi.plan_item_id IS NULL) AS "adHoc"
      FROM visit_items vi JOIN exercises e ON e.id = vi.exercise_id
      WHERE vi.visit_id = ANY($1::uuid[])

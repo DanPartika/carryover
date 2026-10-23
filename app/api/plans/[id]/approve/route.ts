@@ -66,17 +66,33 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       await client.query("ROLLBACK");
       return closedEpisodeResponse();
     }
+    // Two overlapping approvals both read "draft" before either committed. Lock
+    // the draft row and look again: the second one waits here, sees the first
+    // already activated it, and stops instead of re-approving an active plan.
+    const {
+      rows: [locked],
+    } = await client.query<{ status: string }>("SELECT status FROM plans WHERE id = $1 FOR UPDATE", [
+      plan.id,
+    ]);
+    if (!locked || locked.status !== "draft") {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "plan is not a draft" }, { status: 409 });
+    }
     const { rows: retired } = await client.query<{ id: string }>(
       `UPDATE plans SET status = 'retired', retired_at = now()
        WHERE episode_id = $1 AND status = 'active' RETURNING id`,
       [plan.episode_id],
     );
-    await client.query(
+    const { rowCount: activated } = await client.query(
       `UPDATE plans SET status = 'active', approved_by = $2, approved_at = now(),
               supersedes_plan_id = $3
-       WHERE id = $1`,
+       WHERE id = $1 AND status = 'draft'`,
       [plan.id, user.id, retired[0]?.id ?? null],
     );
+    if (!activated) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "plan is not a draft" }, { status: 409 });
+    }
     if (retired.length > 0) {
       await recordReview(client, {
         episodeId: plan.episode_id,

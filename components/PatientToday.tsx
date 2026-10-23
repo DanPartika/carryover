@@ -1299,6 +1299,7 @@ export default function PatientToday() {
                       {dosageText(it)}
                       {it.pain !== null ? ` · pain ${it.pain}/10` : ""}
                     </span>
+                    {it.note && <p className="basis-full pt-0.5 text-xs">{it.note}</p>}
                   </li>
                 ))}
               </ul>
@@ -1340,10 +1341,10 @@ export default function PatientToday() {
 
       {data.goals && (
         <GoalCheck
-          // Keyed on each goal and its newest rating date, so a fresh save, a
-          // goal added or a goal removed reseeds the sliders instead of
-          // holding stale local state.
-          key={data.goals.rows.map((g) => `${g.activity}:${g.currentOn ?? g.baselineOn}`).join("|")}
+          // Keyed on WHICH goals exist: adding or removing one reseeds the
+          // card. A save changes only the ratings, so it must not remount —
+          // that threw away the "Saved" note and any slider still being moved.
+          key={data.goals.rows.map((g) => g.activity).join("|")}
           goals={data.goals.rows}
           promptDue={data.goals.promptDue}
           regions={data.goals.regions}
