@@ -12,11 +12,25 @@
 // and it works — no shared package, no Lithe edits.
 //
 // AUTHORIZATION is Core's answer, never the client's claim: we forward the
-// caller's bearer to Core /v1/me, which verifies the JWT signature against
-// Zitadel's JWKS and returns the platform role. A forged or expired token can't
-// get past it, and only role === "admin" proceeds. The gateway is public by
-// design ("each app gates itself on login"), so this check IS the security
+// caller's bearer to Core /v1/admin/session, which only answers 200 for a
+// platform admin holding a token minted for LITHE STUDIO. The gateway is public
+// by design ("each app gates itself on login"), so this check IS the security
 // boundary — keep it first, and keep it server-side.
+//
+// It used to ask /v1/me and read `role`. That verified the token and the role
+// but not which app the token was FOR — and Core accepts a token minted for any
+// registered app on /v1/me, by design. So an admin's token lifted from any one
+// app (breezy-bets is public; an XSS or a leaked log line is enough) would run
+// arbitrary SQL, writes included, against this app's database. Core's own admin
+// routes closed that hole in July by requiring a Studio token; /v1/admin/session
+// sits behind the same gate, so this console now inherits it. A Core too old to
+// have the route answers 404 and the console fails closed.
+//
+// THE CONNECTION IS THROWAWAY. Operator SQL can change session state — SET
+// search_path, SET ROLE, an explicit COMMIT that ends our transaction — and a
+// pooled connection carries that into whichever request borrows it next. So the
+// limits below are set at session level (they outlive a COMMIT inside the
+// script), and the connection is destroyed afterwards instead of being released.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db/pool";
@@ -26,6 +40,7 @@ export const dynamic = "force-dynamic";
 
 const STATEMENT_TIMEOUT = "15s"; // a runaway query can't wedge the app's pool
 const MAX_ROWS = 1000; // cap what we serialize back to the browser
+const CORE_TIMEOUT_MS = 5000; // Core is one hop away in-network; don't hang on it
 
 type CoreMe = { role?: string; email?: string; displayName?: string };
 
@@ -36,15 +51,18 @@ async function requireLitheAdmin(req: NextRequest): Promise<CoreMe | null> {
 
   const core = (process.env.LITHE_CORE_INTERNAL_URL || "http://core:8080").replace(/\/+$/, "");
   try {
-    const res = await fetch(`${core}/v1/me`, {
+    const res = await fetch(`${core}/v1/admin/session`, {
       headers: { authorization: auth },
       cache: "no-store",
+      signal: AbortSignal.timeout(CORE_TIMEOUT_MS),
     });
-    if (!res.ok) return null; // 401 = bad/expired token
+    // 401 = bad/expired token, 403 = not an admin or not a Studio token,
+    // 404 = a Core that predates the route. All of them mean no.
+    if (!res.ok) return null;
     const me = (await res.json()) as CoreMe;
     return me.role === "admin" ? me : null;
   } catch {
-    return null; // Core unreachable — fail closed
+    return null; // Core unreachable or slow — fail closed
   }
 }
 
@@ -75,8 +93,8 @@ export async function POST(req: NextRequest) {
   if (!sql) return NextResponse.json({ error: "sql is required" }, { status: 400 });
 
   // Two independent gates, because a regex alone is not a security control:
-  // the sniff gives a clear error, and READ ONLY makes Postgres itself refuse
-  // any write that slipped past it.
+  // the sniff gives a clear error, and a read-only SESSION makes Postgres itself
+  // refuse any write that slipped past it.
   const write = looksLikeWrite(sql);
   if (write && !allowWrite) {
     return NextResponse.json(
@@ -89,8 +107,14 @@ export async function POST(req: NextRequest) {
   const pool = getPool();
   const client = await pool.connect();
   try {
+    // Session-level, not SET LOCAL / BEGIN READ ONLY alone. Those end with the
+    // transaction, and the script below is free to end it: "select 1; commit;
+    // delete from x" passed the sniff (it starts with select), committed our
+    // read-only transaction, and ran the delete in a fresh read-write one with no
+    // timeout. A session default applies to every transaction the script opens.
+    await client.query(`SET statement_timeout = '${STATEMENT_TIMEOUT}'`);
+    if (!allowWrite) await client.query("SET default_transaction_read_only = on");
     await client.query(allowWrite ? "BEGIN" : "BEGIN READ ONLY");
-    await client.query(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}'`);
     // No parameters: node-pg uses the simple protocol, so a pasted script of
     // several statements works and comes back as an array — report the last.
     const raw = await client.query({ text: sql, rowMode: "array" });
@@ -134,6 +158,7 @@ export async function POST(req: NextRequest) {
     // Postgres' own message is the whole value of a console — pass it through.
     return NextResponse.json({ error: msg }, { status: 400 });
   } finally {
-    client.release();
+    // Destroy, never return to the pool: see "THE CONNECTION IS THROWAWAY" above.
+    client.release(true);
   }
 }
