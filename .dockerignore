@@ -1,0 +1,10 @@
+# Keep the build context small and keep host state out of the image. Without this
+# file `COPY . .` also copies the host's node_modules over the ones `npm ci` just
+# installed inside the image, and ships .git into the build stage.
+# NOTE: .env is deliberately NOT ignored — NEXT_PUBLIC_* must be inlined at build
+# time. Every other secret is read at runtime via env_file.
+node_modules
+.next
+.git
+*.md
+tsconfig.tsbuildinfo

@@ -12,11 +12,18 @@ RUN npm run build
 FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production PORT=3004 HOSTNAME=0.0.0.0
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+# Run as the image's unprivileged `node` user, not root. The app only ever writes
+# under /app (Next's own cache) and /tmp, so it needs nothing more — and if a
+# request ever does get code running in this process, it should not be running
+# as root in the container. /app stays owned by `node` because Next writes its
+# image and revalidation caches there at runtime.
+RUN chown node:node /app
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
 # Migrations (and later, library seeds) must exist at runtime for the
 # instrumentation-hook migration runner (instrumentation.ts -> lib/db/migrate.ts).
-COPY --from=build /app/db ./db
+COPY --from=build --chown=node:node /app/db ./db
+USER node
 EXPOSE 3004
 CMD ["node", "server.js"]
