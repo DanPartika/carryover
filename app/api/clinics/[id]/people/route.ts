@@ -9,8 +9,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/identity";
-import { canManage, rolesInClinic, type ClinicRole } from "@/lib/auth/roles";
+import { canChangeRole, canManage, isAppAdmin, rolesInClinic, type ClinicRole } from "@/lib/auth/roles";
 import { getPool } from "@/lib/db/pool";
+import { UUID_RE } from "@/lib/review/goal-http";
 
 const ROLES: ClinicRole[] = ["pt", "patient", "admin"];
 
@@ -22,8 +23,11 @@ async function authorize(req: NextRequest, clinicId: string) {
   if (!canManage(roles)) {
     return { pool, error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
-  return { pool, user, error: null };
+  return { pool, user, roles, error: null };
 }
+
+const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 });
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id: clinicId } = await ctx.params;
@@ -73,17 +77,32 @@ type Action =
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id: clinicId } = await ctx.params;
-  const { pool, error } = await authorize(req, clinicId);
+  const { pool, user, roles, error } = await authorize(req, clinicId);
   if (error) return error;
 
   const body = (await req.json().catch(() => null)) as Action | null;
   if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
 
+  // Ids go straight into uuid columns: anything else is a Postgres cast error,
+  // which would reach the caller as a bare 500.
+  if (body.action === "add_member" || body.action === "remove_member") {
+    if (!isUuid(body.userId)) return badRequest("userId must be a user id");
+    if (!ROLES.includes(body.role)) return badRequest("bad role");
+    // Handing out (or taking away) the admin role is not a PT's call.
+    if (!canChangeRole(roles, await isAppAdmin(pool, user.id), body.role)) {
+      return NextResponse.json(
+        { error: "only a clinic admin can grant or remove the admin role" },
+        { status: 403 },
+      );
+    }
+  } else if (body.action === "assign" || body.action === "unassign") {
+    if (!isUuid(body.ptUserId) || !isUuid(body.patientUserId)) {
+      return badRequest("ptUserId and patientUserId must be user ids");
+    }
+  }
+
   switch (body.action) {
     case "add_member": {
-      if (!ROLES.includes(body.role)) {
-        return NextResponse.json({ error: "bad role" }, { status: 400 });
-      }
       await pool.query(
         `INSERT INTO clinic_members (clinic_id, user_id, role) VALUES ($1, $2, $3)
          ON CONFLICT (clinic_id, user_id, role) DO UPDATE SET active = true`,

@@ -24,6 +24,27 @@ export function canManage(roles: ClinicRole[]): boolean {
   return roles.includes("pt") || roles.includes("admin");
 }
 
+/**
+ * Pure: may someone holding `actorRoles` grant or revoke `role` in this clinic?
+ *
+ * PTs manage the roster — they add patients, add colleagues, and assign who
+ * treats whom. The one thing that is not theirs to hand out is `admin`, because
+ * an admin reaches every patient in the clinic without an assignment (see
+ * canTreat). When any manager could grant any role, a PT could make themselves
+ * an admin — or strip the role from the real one — with a single request. The
+ * clinic's admins decide who else is one. So can the app admin, provided they are
+ * on this clinic's roster (the route checks canManage first) — which is what
+ * recovers a clinic whose last admin has left.
+ */
+export function canChangeRole(
+  actorRoles: ClinicRole[],
+  actorIsAppAdmin: boolean,
+  role: ClinicRole,
+): boolean {
+  if (role === "admin") return actorRoles.includes("admin") || actorIsAppAdmin;
+  return canManage(actorRoles);
+}
+
 export async function isAppAdmin(pool: Pool, userId: string): Promise<boolean> {
   const { rows } = await pool.query<{ is_app_admin: boolean }>(
     "SELECT is_app_admin FROM users WHERE id = $1",
